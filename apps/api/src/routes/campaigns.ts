@@ -38,6 +38,17 @@ async function uniqueCode(db: D1Database): Promise<string> {
   throw new Error('could not allocate short code');
 }
 
+/** Writes the Drive setting. 'off' needs nothing (so older databases keep working); anything else needs migration 0004. */
+async function setSaveMode(db: D1Database, id: string, mode: string | undefined): Promise<boolean> {
+  if (mode === undefined) return true;
+  try {
+    await db.prepare('UPDATE campaigns SET save_mode = ? WHERE id = ?').bind(mode, id).run();
+    return true;
+  } catch {
+    return mode === 'off';
+  }
+}
+
 campaigns.get('/', async (c) => {
   const u = c.get('user');
   const q = u.role === 'super_admin' ? c.env.DB.prepare(`${SELECT} ORDER BY k.created_at DESC`) : c.env.DB.prepare(`${SELECT} WHERE k.org_id = ? ORDER BY k.created_at DESC`).bind(u.org_id);
@@ -69,12 +80,13 @@ campaigns.post('/', requireRole('super_admin', 'manager'), async (c) => {
   const now = new Date().toISOString();
   await c.env.DB.prepare(
     `INSERT INTO campaigns (id, org_id, short_code, title, description, language, starts_at, ends_at, daily_window,
-       status, caption, hashtags, thank_you, cta_url, save_mode, created_by, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,'draft',?,?,?,?,?,?,?,?)`
+       status, caption, hashtags, thank_you, cta_url, created_by, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,'draft',?,?,?,?,?,?,?)`
   )
     .bind(id, orgId, code, d.title, d.description ?? null, d.language, new Date(d.startsAt).toISOString(), new Date(d.endsAt).toISOString(),
-      d.dailyWindow ? JSON.stringify(d.dailyWindow) : null, d.caption ?? null, d.hashtags ?? null, d.thankYou ?? null, d.ctaUrl ?? null, d.saveMode ?? 'off', u.id, now, now)
+      d.dailyWindow ? JSON.stringify(d.dailyWindow) : null, d.caption ?? null, d.hashtags ?? null, d.thankYou ?? null, d.ctaUrl ?? null, u.id, now, now)
     .run();
+  if (!(await setSaveMode(c.env.DB, id, d.saveMode))) return c.json({ id, shortCode: code, warning: 'save_mode_needs_migration' }, 201);
   await audit(c, 'campaign.create', { type: 'campaign', id }, { title: d.title, shortCode: code });
   return c.json({ id, shortCode: code }, 201);
 });
@@ -95,13 +107,14 @@ campaigns.patch('/:id', requireRole('super_admin', 'manager'), async (c) => {
   const pick = <T>(v: T | undefined, old: T | null) => (v === undefined ? old : v);
   await c.env.DB.prepare(
     `UPDATE campaigns SET title=?, description=?, language=?, starts_at=?, ends_at=?, daily_window=?, caption=?, hashtags=?,
-       thank_you=?, cta_url=?, short_code=?, save_mode=?, updated_at=? WHERE id=?`
+       thank_you=?, cta_url=?, short_code=?, updated_at=? WHERE id=?`
   )
     .bind(pick(d.title, r.title), pick(d.description, r.description), pick(d.language, r.language), startsAt, endsAt,
       d.dailyWindow === undefined ? r.daily_window : d.dailyWindow ? JSON.stringify(d.dailyWindow) : null,
       pick(d.caption, r.caption), pick(d.hashtags, r.hashtags), pick(d.thankYou, r.thank_you), pick(d.ctaUrl, r.cta_url),
-      pick(d.shortCode, r.short_code), pick(d.saveMode, r.save_mode ?? 'off'), new Date().toISOString(), id)
+      pick(d.shortCode, r.short_code), new Date().toISOString(), id)
     .run();
+  if (!(await setSaveMode(c.env.DB, id, d.saveMode))) return c.json({ error: 'needs_migration' }, 409);
   await audit(c, 'campaign.update', { type: 'campaign', id }, Object.keys(d));
   return c.json({ ok: true });
 });

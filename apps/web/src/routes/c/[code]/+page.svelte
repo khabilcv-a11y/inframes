@@ -208,29 +208,34 @@
   }
 
   // ---- save a copy to the organiser's Drive (in the background; the participant never waits for it) ----
-  async function putToDrive(outputId: string, kind: 'raw' | 'framed', file: Blob, mime: string) {
-    for (let attempt = 0; attempt < 3; attempt++) {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const toBase64 = (f: Blob) => new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] ?? ''); r.onerror = rej; r.readAsDataURL(f); });
+
+  /** Sends one picture to the organiser's script, then waits until our server confirms it arrived (the script reports back). */
+  async function putToDrive(outputId: string, kind: 'raw' | 'framed', file: Blob, mime: string, expected: number) {
+    for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const slot = await api<{ uploadUrl?: string }>(`/c/${code}/outputs/${outputId}/upload`, { method: 'POST', body: JSON.stringify({ visitorId: visitor, kind, mime, size: file.size }) });
-        if (!slot.ok || !slot.data.uploadUrl) return false; // not allowed or Drive unavailable: no point retrying
-        const up = await fetch(slot.data.uploadUrl, { method: 'PUT', headers: { 'content-type': mime }, body: file });
-        const { id } = (await up.json()) as { id?: string };
-        if (!up.ok || !id) throw new Error('put');
-        const done = await api(`/c/${code}/outputs/${outputId}/uploaded`, { method: 'POST', body: JSON.stringify({ visitorId: visitor, kind, fileId: id }) });
-        return done.ok;
-      } catch { await new Promise((r) => setTimeout(r, 1500 * (attempt + 1))); }
+        const slot = await api<{ scriptUrl?: string; msg?: string; sig?: string }>(`/c/${code}/outputs/${outputId}/upload`, { method: 'POST', body: JSON.stringify({ visitorId: visitor, kind, mime, size: file.size }) });
+        if (!slot.ok || !slot.data.scriptUrl) return false; // not allowed or Drive unavailable: no point retrying
+        // text/plain keeps this a "simple" request, so the browser sends it without a pre-check the script cannot answer
+        await fetch(slot.data.scriptUrl, { method: 'POST', mode: 'no-cors', headers: { 'content-type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ msg: slot.data.msg, sig: slot.data.sig, data: await toBase64(file) }) });
+        for (let i = 0; i < 14; i++) {
+          await sleep(2500);
+          const st = await api<{ raw?: number; framed?: number }>(`/c/${code}/outputs/${outputId}/saved?visitorId=${visitor}`);
+          if (st.ok && (kind === 'raw' ? (st.data.raw ?? 0) >= expected : (st.data.framed ?? 0) >= 1)) return true;
+        }
+      } catch { await sleep(1500); }
     }
     return false;
   }
   async function saveToDrive(outputId: string, framed: Blob) {
     if (!c || c.saveMode === 'off') return;
     drive = 'saving';
-    const jobs: Promise<boolean>[] = [];
-    if (savesRaw) for (const p of pics.slice(0, nWin)) if (p) jobs.push(putToDrive(outputId, 'raw', p.file, /^image\/[a-z0-9.+-]+$/i.test(p.file.type) ? p.file.type : 'image/jpeg'));
-    if (savesFramed) jobs.push(putToDrive(outputId, 'framed', framed, 'image/jpeg'));
-    const res = await Promise.all(jobs);
-    drive = res.every(Boolean) ? 'saved' : 'failed';
-    if (drive === 'failed') track('error', { step: 'drive' });
+    let ok = true, n = 0;
+    if (savesRaw) for (const p of pics.slice(0, nWin)) if (p) ok = (await putToDrive(outputId, 'raw', p.file, /^image\/[a-z0-9.+-]+$/i.test(p.file.type) ? p.file.type : 'image/jpeg', ++n)) && ok;
+    if (savesFramed) ok = (await putToDrive(outputId, 'framed', framed, 'image/jpeg', 1)) && ok;
+    drive = ok ? 'saved' : 'failed';
+    if (!ok) track('error', { step: 'drive' });
   }
 
   // ---- share ----

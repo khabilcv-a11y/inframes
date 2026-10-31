@@ -9,7 +9,7 @@ import { turnstileOk } from '../lib/turnstile.ts';
 import { loadTemplates } from './templates.ts';
 import { SELECT, logoOf, type Row } from './campaigns.ts';
 import { slugify } from '../lib/slug.ts';
-import { driveConfigured } from '../lib/drive.ts';
+import { scriptUrl } from '../lib/drive.ts';
 
 export const publicRoutes = new Hono<AppEnv>();
 
@@ -65,11 +65,11 @@ publicRoutes.get('/c/:code', async (c) => {
   });
 });
 
-/** The campaign's Drive setting, but 'off' unless Drive is configured and connected (so no consent line for nothing). */
+/** The campaign's Drive setting, but 'off' unless a Drive script is connected (so no consent line for nothing). */
 async function effectiveSaveMode(env: AppEnv['Bindings'], r: Row): Promise<string> {
   const mode = r.save_mode ?? 'off';
-  if (mode === 'off' || !driveConfigured(env)) return 'off';
-  return (await env.DB.prepare('SELECT 1 AS ok FROM drive_connection WHERE id = 1').first()) ? mode : 'off';
+  if (mode === 'off') return 'off';
+  return (await scriptUrl(env)) ? mode : 'off';
 }
 
 async function moreFrom(db: D1Database, r: Row): Promise<Card[]> {

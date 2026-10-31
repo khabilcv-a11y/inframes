@@ -1,88 +1,42 @@
 import type { Env } from '../types.ts';
-import { decryptSecret } from './secrets.ts';
 
-const OAUTH = (e: Env) => e.GOOGLE_OAUTH_BASE ?? 'https://oauth2.googleapis.com';
-const API = (e: Env) => e.GOOGLE_API_BASE ?? 'https://www.googleapis.com';
-export const SCOPE = 'https://www.googleapis.com/auth/drive.file openid email';
+/**
+ * Drive saving works through a small Apps Script that lives in the owner's own Google account.
+ * It only accepts requests signed with a secret derived from SESSION_SECRET, so nobody else can use it,
+ * and it needs no Google Cloud project, OAuth screen or extra keys.
+ */
+const enc = new TextEncoder();
+const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
 
-export const driveConfigured = (e: Env) => !!(e.GOOGLE_CLIENT_ID && e.GOOGLE_CLIENT_SECRET && e.TOKEN_ENC_KEY);
-
-let cached: { token: string; until: number } | null = null;
-
-/** Short-lived access token from the stored refresh token (cached for most of its hour). */
-export async function accessToken(e: Env): Promise<string | null> {
-  if (cached && cached.until > Date.now() + 60_000) return cached.token;
-  const row = await e.DB.prepare('SELECT refresh_token_enc FROM drive_connection WHERE id = 1').first<{ refresh_token_enc: string }>();
-  if (!row || !driveConfigured(e)) return null;
-  const refresh = await decryptSecret(row.refresh_token_enc, e.TOKEN_ENC_KEY!);
-  const res = await fetch(`${OAUTH(e)}/token`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: e.GOOGLE_CLIENT_ID!, client_secret: e.GOOGLE_CLIENT_SECRET!, refresh_token: refresh, grant_type: 'refresh_token' })
-  });
-  if (!res.ok) return null;
-  const j = (await res.json()) as { access_token: string; expires_in: number };
-  cached = { token: j.access_token, until: Date.now() + j.expires_in * 1000 };
-  return j.access_token;
+async function hmac(key: string | ArrayBuffer, msg: string): Promise<string> {
+  const k = await crypto.subtle.importKey('raw', typeof key === 'string' ? enc.encode(key) : key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return hex(await crypto.subtle.sign('HMAC', k, enc.encode(msg)));
 }
-export const forgetToken = () => { cached = null; };
 
-const auth = (t: string) => ({ authorization: `Bearer ${t}` });
-const q = (s: string) => s.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
+/** The shared secret pasted into the script. Derived, so it needs no storage and no extra setting. */
+export const scriptSecret = async (e: Env) => (await hmac(e.SESSION_SECRET, 'inframe-drive-script-v1')).slice(0, 40);
+export const sign = async (e: Env, msg: string) => hmac(await scriptSecret(e), msg);
 
-/** Finds a folder this app made (drive.file only sees such files), or creates it. */
-export async function ensureFolder(e: Env, token: string, name: string, parent: string | null): Promise<string> {
-  const query = `name='${q(name)}' and mimeType='application/vnd.google-apps.folder' and trashed=false${parent ? ` and '${parent}' in parents` : ''}`;
-  const found = await fetch(`${API(e)}/drive/v3/files?${new URLSearchParams({ q: query, fields: 'files(id)', pageSize: '1' })}`, { headers: auth(token) });
-  if (found.ok) {
-    const id = ((await found.json()) as { files?: { id: string }[] }).files?.[0]?.id;
-    if (id) return id;
+export async function scriptUrl(e: Env): Promise<string | null> {
+  try {
+    return (await e.DB.prepare('SELECT url FROM drive_script WHERE id = 1').first<{ url: string }>())?.url ?? null;
+  } catch {
+    return null; // migration not applied yet
   }
-  const made = await fetch(`${API(e)}/drive/v3/files?fields=id`, {
-    method: 'POST', headers: { ...auth(token), 'content-type': 'application/json' },
-    body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', ...(parent ? { parents: [parent] } : {}) })
-  });
-  if (!made.ok) throw new Error(`drive_folder_failed_${made.status}`);
-  return ((await made.json()) as { id: string }).id;
 }
 
-/** InFrame / <Organisation> / <code - title>. Folder ids are remembered so this is a lookup after the first time. */
-export async function campaignFolder(e: Env, token: string, c: { id: string; org_id: string; short_code: string; title: string; drive_folder_id: string | null }, orgName: string): Promise<string> {
-  if (c.drive_folder_id) return c.drive_folder_id;
-  const conn = await e.DB.prepare('SELECT root_folder_id FROM drive_connection WHERE id = 1').first<{ root_folder_id: string | null }>();
-  let root = conn?.root_folder_id ?? null;
-  if (!root) { root = await ensureFolder(e, token, 'InFrame', null); await e.DB.prepare('UPDATE drive_connection SET root_folder_id = ? WHERE id = 1').bind(root).run(); }
-  const org = await e.DB.prepare('SELECT drive_folder_id FROM organisations WHERE id = ?').bind(c.org_id).first<{ drive_folder_id: string | null }>();
-  let orgFolder = org?.drive_folder_id ?? null;
-  if (!orgFolder) { orgFolder = await ensureFolder(e, token, orgName, root); await e.DB.prepare('UPDATE organisations SET drive_folder_id = ? WHERE id = ?').bind(orgFolder, c.org_id).run(); }
-  const folder = await ensureFolder(e, token, `${c.short_code} - ${c.title}`.slice(0, 120), orgFolder);
-  await e.DB.prepare('UPDATE campaigns SET drive_folder_id = ? WHERE id = ?').bind(folder, c.id).run();
-  return folder;
-}
+export const isScriptUrl = (u: string) => /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(u);
 
-/** Starts a resumable upload. `origin` lets the browser PUT the file straight to Google. */
-export async function startUpload(e: Env, token: string, o: { name: string; mime: string; size: number; parent: string; origin: string }): Promise<string> {
-  const res = await fetch(`${API(e)}/upload/drive/v3/files?uploadType=resumable&fields=id`, {
-    method: 'POST',
-    headers: { ...auth(token), 'content-type': 'application/json; charset=UTF-8', 'x-upload-content-type': o.mime, 'x-upload-content-length': String(o.size), origin: o.origin },
-    body: JSON.stringify({ name: o.name, parents: [o.parent] })
-  });
-  const loc = res.headers.get('location');
-  if (!res.ok || !loc) throw new Error(`drive_upload_start_failed_${res.status}`);
-  return loc;
-}
-
-export async function verifyFile(e: Env, token: string, fileId: string, parent: string): Promise<boolean> {
-  const res = await fetch(`${API(e)}/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,parents`, { headers: auth(token) });
-  if (!res.ok) return false;
-  return ((await res.json()) as { parents?: string[] }).parents?.includes(parent) ?? false;
-}
-
-export async function aboutDrive(e: Env, token: string) {
-  const res = await fetch(`${API(e)}/drive/v3/about?fields=storageQuota,user`, { headers: auth(token) });
-  if (!res.ok) return null;
-  const j = (await res.json()) as { storageQuota?: { usage?: string; limit?: string }; user?: { emailAddress?: string } };
-  return { used: Number(j.storageQuota?.usage ?? 0), limit: j.storageQuota?.limit ? Number(j.storageQuota.limit) : null, email: j.user?.emailAddress ?? null };
+/** Asks the script who it is (proves the link works and the secret matches). */
+export async function pingScript(e: Env, url: string): Promise<{ ok: boolean; email?: string }> {
+  const t = String(Date.now());
+  try {
+    const res = await fetch(`${url}?${new URLSearchParams({ action: 'ping', t, sig: await sign(e, `ping:${t}`) })}`, { redirect: 'follow' });
+    const j = (await res.json()) as { ok?: boolean; email?: string };
+    return { ok: j.ok === true, email: j.email };
+  } catch {
+    return { ok: false };
+  }
 }
 
 /** A file name from what the participant typed (college, name…) plus the serial, safe for Drive. */
@@ -91,3 +45,59 @@ export function fileName(values: string[], serial: number, suffix = '', ext = 'j
   const base = values.map(clean).filter(Boolean).join(' - ').slice(0, 100) || 'frame';
   return `${base} - ${String(serial).padStart(6, '0')}${suffix}.${ext.replace(/[^a-z0-9]/gi, '').slice(0, 5) || 'jpg'}`;
 }
+
+/** The text of the Apps Script, with this site's address and secret filled in. */
+export async function scriptSource(e: Env, site: string): Promise<string> {
+  return SCRIPT.replace('__SECRET__', await scriptSecret(e)).replace('__SITE__', site);
+}
+
+const SCRIPT = `// InFrame: saves participants' pictures into this Google Drive. Paste as-is, then Deploy as a Web app.
+const SECRET = '__SECRET__';
+const SITE = '__SITE__';
+
+function hmac_(text) {
+  return Utilities.computeHmacSha256Signature(text, SECRET)
+    .map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join('');
+}
+function folder_(parent, name) {
+  var it = parent.getFoldersByName(name);
+  return it.hasNext() ? it.next() : parent.createFolder(name);
+}
+function json_(o) {
+  return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet(e) {
+  var p = e.parameter || {};
+  if (p.action === 'ping' && p.sig === hmac_('ping:' + p.t)) {
+    return json_({ ok: true, email: Session.getEffectiveUser().getEmail() });
+  }
+  return json_({ ok: false });
+}
+
+function doPost(e) {
+  try {
+    var body = JSON.parse(e.postData.contents);
+    if (body.sig !== hmac_(body.msg)) return json_({ ok: false, error: 'bad signature' });
+    var m = JSON.parse(body.msg);
+    if (Date.now() > m.e) return json_({ ok: false, error: 'expired' });
+
+    var lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+    var target;
+    try {
+      target = folder_(folder_(folder_(DriveApp.getRootFolder(), 'InFrame'), m.og), m.cp);
+    } finally {
+      lock.releaseLock();
+    }
+    var file = target.createFile(Utilities.newBlob(Utilities.base64Decode(body.data), m.m, m.n));
+    UrlFetchApp.fetch(SITE + '/api/drive/saved', {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      payload: JSON.stringify({ msg: body.msg, fileId: file.getId(), sig: hmac_(body.msg + '|' + file.getId()) })
+    });
+    return json_({ ok: true });
+  } catch (err) {
+    return json_({ ok: false, error: String(err) });
+  }
+}
+`;

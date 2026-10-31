@@ -1,83 +1,95 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { api } from '$lib/api';
   import { showIst } from '$lib/time';
   import PageHeader from '$lib/PageHeader.svelte';
 
-  type S = { configured: boolean; connected: boolean; email: string | null; connectedAt: string | null; quota: { used: number; limit: number | null } | null };
+  type S = { connected: boolean; email: string | null; connectedAt: string | null };
   let s = $state<S | null>(null);
-  let copied = $state('');
-  const redirect = $derived(`${location.origin}/api/drive/callback`);
-  const gb = (n: number) => (n / 1e9 >= 100 ? `${(n / 1e12).toFixed(2)} TB` : `${(n / 1e9).toFixed(1)} GB`);
-  const flash = page.url.searchParams;
+  let script = $state('');
+  let url = $state('');
+  let msg = $state('');
+  let err = $state('');
+  let busy = $state(false);
+  let copied = $state(false);
 
   async function load() {
     const r = await api<S>('/super/drive/status');
     if (r.status === 403) return goto('/admin');
     if (r.ok) s = r.data;
+    if (r.ok && !r.data.connected) { const sc = await api<{ script: string }>('/super/drive/script'); if (sc.ok) script = sc.data.script; }
   }
   onMount(load);
 
+  async function copy() {
+    try { await navigator.clipboard.writeText(script); copied = true; setTimeout(() => (copied = false), 2000); } catch { err = 'Copy failed. Select the text in the box and copy it manually.'; }
+  }
+  async function connect(e: SubmitEvent) {
+    e.preventDefault();
+    err = ''; busy = true;
+    const r = await api<{ error?: string }>('/super/drive/connect', { method: 'POST', body: JSON.stringify({ url }) });
+    busy = false;
+    if (r.ok) { msg = 'Google Drive is connected. ✓'; url = ''; await load(); return; }
+    err = r.data.error === 'bad_url' ? 'That does not look like the Web app URL. It starts with https://script.google.com/macros/s/ and ends with /exec.'
+      : 'Could not reach your script. Check that you pasted the script exactly as shown, deployed it as a Web app with access set to “Anyone”, and copied the Web app URL (not the editor address).';
+  }
+  async function test() {
+    msg = ''; err = ''; busy = true;
+    const r = await api<{ ok?: boolean }>('/super/drive/test', { method: 'POST' });
+    busy = false;
+    if (r.data.ok) msg = 'Working. ✓'; else err = 'The script did not answer. Open it in Google, deploy it again as a Web app, and reconnect.';
+  }
   async function disconnect() {
     if (!confirm('Disconnect Google Drive? New pictures will no longer be saved. Files already in Drive stay where they are.')) return;
     await api('/super/drive/disconnect', { method: 'POST' });
-    await load();
+    msg = ''; await load();
   }
-  async function copy(text: string, k: string) {
-    try { await navigator.clipboard.writeText(text); copied = k; setTimeout(() => (copied = ''), 1800); } catch { /* ignore */ }
-  }
-  const errors: Record<string, string> = { denied: 'Google access was not allowed.', state: 'The connection link expired. Try again.', token: 'Google did not return a refresh token. Remove InFrame at myaccount.google.com/permissions and connect again.' };
 </script>
 
 <svelte:head><title>Google Drive · InFrame</title></svelte:head>
-<PageHeader title="Google Drive" subtitle="Where participants' photos and finished pictures are saved." />
+<PageHeader title="Google Drive" subtitle="Save participants' photos and finished pictures to your own Drive." />
 
-{#if flash.get('connected')}<p class="card ok" role="status">Google Drive is connected. ✓</p>{/if}
-{#if flash.get('error')}<p class="card bad" role="alert">{errors[flash.get('error')!] ?? 'Could not connect.'}</p>{/if}
+{#if msg}<p class="card ok" role="status">{msg}</p>{/if}
+{#if err}<p class="card bad" role="alert">{err}</p>{/if}
 
-{#if s}
-  {#if s.connected}
-    <section class="card">
-      <div class="row"><span class="badge active">Connected</span><strong>{s.email ?? 'Google account'}</strong></div>
-      <p class="muted">Connected {s.connectedAt ? showIst(s.connectedAt) : ''}. Files go to <strong>InFrame / organisation / campaign</strong> folders in this Drive.</p>
-      {#if s.quota}
-        <p style="margin-bottom:6px">Storage used: <strong>{gb(s.quota.used)}</strong>{s.quota.limit ? ` of ${gb(s.quota.limit)}` : ''}</p>
-        {#if s.quota.limit}<div class="bar"><i style="width:{Math.min(100, (s.quota.used / s.quota.limit) * 100)}%"></i></div>{/if}
-      {/if}
-      <div class="row" style="margin-top:16px"><a class="btn ghost sm" href="https://drive.google.com" target="_blank" rel="noopener">Open Google Drive ↗</a><button class="sm" onclick={disconnect}>Disconnect</button></div>
-      <p class="muted" style="margin-top:16px"><small>Choose what is saved on each campaign's Overview tab → Edit details → Save to Google Drive.</small></p>
-    </section>
-  {:else if s.configured}
-    <section class="card">
-      <h2>Connect your Google Drive</h2>
-      <p>Sign in with the Google account whose Drive should hold the files. InFrame can only see the files and folders it creates itself.</p>
-      <a class="btn" href="/api/super/drive/connect">Connect Google Drive</a>
-    </section>
-  {:else}
-    <section class="card">
-      <h2>One-time setup needed</h2>
-      <p>Google needs to trust this site before it can save files to your Drive. This takes about 10 minutes and is done once.</p>
-      <ol class="steps">
-        <li>Open <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Google Cloud Console</a> (signed in with the Drive account) and create a project called <b>InFrame</b>.</li>
-        <li>Go to <b>APIs &amp; Services → Library</b>, search <b>Google Drive API</b> and click <b>Enable</b>.</li>
-        <li>Go to <b>Google Auth Platform</b> (or OAuth consent screen) → set up: app name <b>InFrame</b>, your email, audience <b>External</b>. Under <b>Audience → Test users</b>, add your own Gmail. Click <b>Publish app</b> later so the connection does not expire after 7 days.</li>
-        <li>Go to <b>Clients → Create client</b> → type <b>Web application</b>. Under <b>Authorised redirect URIs</b> add:
-          <div class="copy"><code>{redirect}</code><button class="sm" onclick={() => copy(redirect, 'r')}>{copied === 'r' ? 'Copied ✓' : 'Copy'}</button></div></li>
-        <li>Copy the <b>Client ID</b> and <b>Client secret</b>. In Cloudflare, open the Pages project → Settings → Variables and Secrets and add: <code>GOOGLE_CLIENT_ID</code> (variable), <code>GOOGLE_CLIENT_SECRET</code> (secret) and <code>TOKEN_ENC_KEY</code> (secret, any long random text of 32+ characters). Then retry the latest deployment.</li>
-        <li>Come back to this page and click <b>Connect Google Drive</b>.</li>
-      </ol>
-    </section>
-  {/if}
+{#if s?.connected}
+  <section class="card">
+    <div class="row"><span class="badge active">Connected</span><strong>{s.email ?? 'Your Google account'}</strong></div>
+    <p class="muted">Connected {s.connectedAt ? showIst(s.connectedAt) : ''}. Pictures are saved in your Drive under <strong>InFrame → organisation → campaign</strong>.</p>
+    <div class="row">
+      <a class="btn ghost sm" href="https://drive.google.com" target="_blank" rel="noopener">Open Google Drive ↗</a>
+      <button class="sm" onclick={test} disabled={busy}>Test</button>
+      <button class="sm" onclick={disconnect}>Disconnect</button>
+    </div>
+    <p class="muted" style="margin-top:16px"><small>Choose what to save on each campaign: Campaigns → the campaign → Edit details → Save to Google Drive.</small></p>
+  </section>
+{:else if s}
+  <section class="card">
+    <h2>Connect in 5 steps (about 3 minutes)</h2>
+    <p class="muted">This uses a tiny script that lives in <strong>your own Google account</strong>. No developer console or keys are needed.</p>
+    <ol class="steps">
+      <li>Open <a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener">script.google.com</a>, signed in with the Google account whose Drive you want to use. A new project opens.</li>
+      <li>Select all the sample code in the editor, delete it, and paste this script:
+        <div class="row" style="margin:8px 0"><button class="btn sm" onclick={copy}>{copied ? 'Copied ✓' : 'Copy script'}</button></div>
+        <textarea readonly rows="6" value={script} onfocus={(e) => e.currentTarget.select()}></textarea>
+      </li>
+      <li>Click <b>Deploy → New deployment</b>. Click the gear next to “Select type” and choose <b>Web app</b>. Set <b>Execute as: Me</b> and <b>Who has access: Anyone</b>, then click <b>Deploy</b>.</li>
+      <li>Click <b>Authorize access</b> and choose your account. If Google says it hasn’t verified the app, click <b>Advanced → Go to … (unsafe) → Allow</b>. This warning appears for every personal script; it is your own script.</li>
+      <li>Copy the <b>Web app URL</b> and paste it here:
+        <form onsubmit={connect} class="row" style="margin-top:8px; align-items:flex-start">
+          <input style="flex:1; min-width:240px; margin:0" required placeholder="https://script.google.com/macros/s/…/exec" bind:value={url} />
+          <button class="btn" disabled={busy}>{busy ? 'Checking…' : 'Connect'}</button>
+        </form>
+      </li>
+    </ol>
+    <p class="muted"><small>“Anyone” only means the link opens without a login. Every request must carry a signed ticket from this site, so nobody else can use it.</small></p>
+  </section>
 {:else}<p class="muted">Loading…</p>{/if}
 
 <style>
   .ok { background: var(--ok-bg); border-color: #b9e0c8; color: var(--ok); font-weight: 600; margin-bottom: 16px; }
   .bad { background: var(--bad-bg); border-color: #efc5c2; color: var(--bad); font-weight: 600; margin-bottom: 16px; }
-  .bar { height: 10px; background: #eeeee9; border-radius: 99px; overflow: hidden; max-width: 420px; }
-  .bar i { display: block; height: 100%; background: var(--coral); }
-  .steps { padding-left: 20px; display: grid; gap: 12px; }
-  code { background: #f1f1ec; padding: 2px 6px; border-radius: 6px; font-size: .85rem; overflow-wrap: anywhere; }
-  .copy { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+  .steps { padding-left: 20px; display: grid; gap: 16px; }
+  textarea { font: .78rem/1.4 monospace; min-height: 0; }
 </style>
