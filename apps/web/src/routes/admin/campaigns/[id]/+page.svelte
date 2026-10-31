@@ -130,7 +130,7 @@
           <dt>Hashtags</dt><dd>{c.hashtags || '—'}</dd>
           <dt>Thank-you</dt><dd>{c.thankYou || '—'}</dd>
           <dt>Saved to Drive</dt><dd>{({ off: 'Nothing', raw: 'Original photos', framed: 'Finished pictures', both: 'Original photos and finished pictures' } as Record<string, string>)[c.saveMode ?? 'off']}</dd>
-          <dt>Call-to-action</dt><dd>{c.ctaUrl || 'This campaign’s own link'}</dd>
+          <dt>Link to send people to</dt><dd>{c.ctaUrl || 'None'}</dd>
         </dl>
       </section>
     {/if}

@@ -103,7 +103,7 @@ test('participant flow: live page, register frame, events, metrics, csv, rate li
   await req('/c/sed26/events', { method: 'POST', body: j({ visitorId: visitor, events: [{ type: 'share' }] }) });
 
   const m = (await (await req(`/admin/campaigns/${campId}/metrics`, {}, m1)).json()) as any;
-  assert.deepEqual(m.funnel, { visits: 1, picked: 1, created: 2, shared: 1, downloaded: 0 });
+  assert.deepEqual(m.funnel, { visits: 1, picked: 1, created: 2, shared: 1, downloaded: 0, clicked: 0, invited: 0 });
   assert.deepEqual(m.byDropdown.rows, [{ name: 'MES College', count: 2 }]);
   assert.equal(m.byDropdown.label, 'Your college');
   assert.deepEqual(m.byRef, [{ name: 'share', count: 1 }]);

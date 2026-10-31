@@ -257,7 +257,15 @@
   }
   function again() { step = 'landing'; result = null; drive = ''; consent = false; for (const p of pics) p?.bitmap.close(); pics = []; sel = 0; ver++; }
 
-  const link = $derived(c?.ctaUrl || (typeof location !== 'undefined' ? `${location.origin}/c/${code}` : ''));
+  const link = $derived(typeof location !== 'undefined' ? `${location.origin}/c/${code}` : '');
+  /** The organiser's external link (social page, website, group…) gets a button named after where it goes. */
+  const cta = $derived.by((): { url: string; label: Key } | null => {
+    const u = c?.ctaUrl;
+    if (!u) return null;
+    const host = (() => { try { return new URL(u).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; } })();
+    const rules: [RegExp, Key][] = [[/instagram\.com$|instagr\.am$/, 'ctaInstagram'], [/facebook\.com$|fb\.com$|fb\.me$/, 'ctaFacebook'], [/youtube\.com$|youtu\.be$/, 'ctaYoutube'], [/(^|\.)wa\.me$|whatsapp\.com$/, 'ctaWhatsapp'], [/(^|\.)t\.me$|telegram\.(me|org)$/, 'ctaTelegram'], [/(^|\.)x\.com$|twitter\.com$/, 'ctaX']];
+    return { url: u, label: rules.find(([re]) => re.test(host))?.[1] ?? 'ctaWebsite' };
+  });
   const missingRequired = (id: string) => touched && fields.find((f) => f.id === id)?.required && !(values[id] ?? '').trim();
   const stateMsg: Record<string, Key> = { scheduled: 'notStarted', paused: 'paused', ended: 'ended' };
 </script>
@@ -300,11 +308,11 @@
             <button class="btn ghost big" onclick={download}>{t('download')}</button>
           </div>
           {#if drive}<p class="privacy" role="status" style="margin:0 0 12px">{drive === 'saving' ? t('savingDrive') : drive === 'saved' ? t('savedDrive') : t('saveFailed')}</p>{/if}
-          {#if caption}<button class="btn ghost block" onclick={() => copyText(caption, 'caption')}>{copied === 'caption' ? t('copied') : t('copyCaption')}</button>{/if}
           <section class="thanks">
             <h2>{t('thanks')}</h2>
             {#if c.thankYou}<p>{c.thankYou}</p>{/if}
-            <button class="btn dark block" onclick={() => copyText(link, 'link')}>{copied === 'link' ? t('linkCopied') : t('invite')}</button>
+            <button class="btn dark block" onclick={() => copyText(caption, 'caption')}>{copied === 'caption' ? t('inviteCopied') : t('invite')}</button>
+            {#if cta}<a class="btn ghost block" href={cta.url} target="_blank" rel="noopener" onclick={() => track('cta_click')}>{t(cta.label)} ↗</a>{/if}
             <button class="link" onclick={again}>{t('again')}</button>
           </section>
         </div>

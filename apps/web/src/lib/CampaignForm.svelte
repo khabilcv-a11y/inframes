@@ -53,7 +53,7 @@
   <label class="field">Caption people can copy <textarea rows="3" bind:value={f.caption} placeholder="Proudly representing my college in the Special Enrollment Drive!"></textarea></label>
   <label class="field">Hashtags <input bind:value={f.hashtags} placeholder="#VoteKerala" /></label>
   <label class="field">Thank-you message <textarea rows="3" bind:value={f.thankYou}></textarea></label>
-  <label class="field">Call-to-action link <span class="hint">Shown on the thank-you screen. Leave empty to use this campaign's own link.</span><input type="url" bind:value={f.ctaUrl} placeholder="https://" /></label>
+  <label class="field">Link to send people to next <span class="hint">A button under “Invite your friends” on the thank-you screen, for example your Instagram page, website or WhatsApp group. Its label matches the site. Leave empty for no button.</span><input type="url" bind:value={f.ctaUrl} placeholder="https://" /></label>
 
   <h2 style="margin-top:28px">Save to Google Drive</h2>
   <label class="field">What to save for this campaign

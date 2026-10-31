@@ -174,7 +174,7 @@ export const outputSchema = z.object({
   turnstileToken: z.string().max(4096).optional()
 });
 
-export const EVENT_TYPES = ['visit', 'pick', 'create', 'download', 'share', 'caption_copy', 'error'] as const;
+export const EVENT_TYPES = ['visit', 'pick', 'create', 'download', 'share', 'caption_copy', 'cta_click', 'error'] as const;
 export const eventsSchema = z.object({
   visitorId: z.string().min(8).max(64),
   events: z.array(z.object({ type: z.enum(EVENT_TYPES), meta: z.record(z.union([z.string().max(100), z.number()])).optional() })).min(1).max(20)

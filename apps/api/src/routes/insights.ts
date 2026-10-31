@@ -70,7 +70,7 @@ insights.get('/admin/campaigns/:id/metrics', async (c) => {
   const people = (t: string) => ev.find((e) => e.type === t)?.people ?? 0;
   const rank = (m: Record<string, number>) => Object.entries(m).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
   return c.json({
-    funnel: { visits: people('visit'), picked: people('pick'), created: outs.length, shared: people('share'), downloaded: people('download') },
+    funnel: { visits: people('visit'), picked: people('pick'), created: outs.length, shared: people('share'), downloaded: people('download'), clicked: people('cta_click'), invited: people('caption_copy') },
     byRef,
     perDay: Object.entries(byDay).sort().map(([day, count]) => ({ day, count })),
     byTemplate: rank(byTemplate), byDropdown: { label: dd[0]?.label ?? null, rows: rank(byValue) },

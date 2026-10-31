@@ -3,7 +3,7 @@
   import { page } from '$app/state';
   import { api } from '$lib/api';
 
-  type M = { funnel: { visits: number; picked: number; created: number; shared: number; downloaded: number }; perDay: { day: string; count: number }[];
+  type M = { funnel: { visits: number; picked: number; created: number; shared: number; downloaded: number; clicked: number; invited: number }; perDay: { day: string; count: number }[];
     byTemplate: { name: string; count: number }[]; byRef: { name: string; count: number }[]; byDropdown: { label: string | null; rows: { name: string; count: number }[] }; errors: number };
   const id = page.params.id;
   let m = $state<M | null>(null);
@@ -11,7 +11,7 @@
 
   const steps = $derived(m ? [
     ['Visited', m.funnel.visits], ['Picked a photo', m.funnel.picked], ['Created a frame', m.funnel.created],
-    ['Shared', m.funnel.shared], ['Downloaded', m.funnel.downloaded]
+    ['Shared', m.funnel.shared], ['Downloaded', m.funnel.downloaded], ['Copied the invite', m.funnel.invited], ['Followed your link', m.funnel.clicked]
   ] as [string, number][] : []);
   const top = $derived(Math.max(1, ...steps.map((s) => s[1])));
   const maxDay = $derived(Math.max(1, ...(m?.perDay.map((d) => d.count) ?? [1])));
