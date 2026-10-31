@@ -1,0 +1,11 @@
+# Cloudflare Pages config (read from the repo root).
+name = "inframes"
+compatibility_date = "2025-01-01"
+pages_build_output_dir = "apps/web/.svelte-kit/cloudflare"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "inframe"
+database_id = "11c5247b-f0a5-477f-a950-f01d8b73e662"
+
+# Secrets (set in the Pages dashboard, never here): SESSION_SECRET, optionally TURNSTILE_SECRET.
