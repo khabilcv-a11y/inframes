@@ -20,9 +20,12 @@ Oct 31, 2026 · @Doshesh
 | 10 | Programme | The first campaign is the **Special Enrollment Drive** (DCIP Kozhikode). Participants represent their **college**: each frame has a *Your name* box and a *Your college* dropdown. |
 | 11 | Participant counter | Wording is "N frames created" (no InFrame branding on participant outputs). |
 | 12 | Home page | The hero is an interactive logo puzzle: the InFrame wordmark is made of loose characters that spring home, are pushed by the cursor, scatter on click, and four viewfinder corners can be dragged into place to "snap the frame" (flash). Reduced-motion visitors get the finished logo. |
+| 14 | Frame sizes | Frames are accepted at **any resolution** in three shapes: square 1:1 (→1080×1080), portrait 4:5 (→1080×1350), story 9:16 (→1080×1920). They are resized in the browser and the photo area is detected after resizing. |
+| 15 | Poster | A4 PDF poster with QR code, made in the browser (so Malayalam/Hindi render correctly); carries only the organiser's wording, no InFrame branding. |
+| 16 | Bot check | Cloudflare Turnstile is wired into admin login and frame creation but stays **off** until `TURNSTILE_SITE_KEY` (variable) and `TURNSTILE_SECRET` (secret) are added in Pages settings. |
 | 13 | Admin UI | Sidebar console (Dashboard, Campaigns, Organisations, Admins, Activity log), campaign workspace with Overview / Frames & titles / Results tabs, mobile drawer menu. |
 
-**Build status.** Done: foundation, auth and lockout, organisations, admins, campaigns and scheduling, frame upload with automatic photo-area detection, drag-to-draw title boxes with stress test, participant photo editor (drag, pinch, rotate, auto-fit text, English/Malayalam/Hindi), share/download/copy caption, anonymous funnel events, results dashboard, CSV export, activity log, interactive home page. **Not yet:** video (paths A/B/C), Google Drive upload, Cloudflare Turnstile, email invites, public wall / TV mode, "Remove my output" link, retention clean-up, QR poster PDF (QR PNG exists).
+**Build status.** Done: foundation, auth and lockout, organisations, admins, campaigns and scheduling, frame upload with automatic photo-area detection, drag-to-draw title boxes with stress test, participant photo editor (drag, pinch, rotate, auto-fit text, English/Malayalam/Hindi), share/download/copy caption, anonymous funnel events, results dashboard, CSV export, activity log, interactive home page. **Not yet:** video (paths A/B/C), Google Drive upload, email invites, public wall / TV mode, "Remove my output" link, retention clean-up. Turnstile needs your keys to switch on.
 
 ## 1. Overview
 

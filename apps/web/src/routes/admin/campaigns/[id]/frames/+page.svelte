@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { page } from '$app/state';
-  import { FONTS, MAX_ASSET_BYTES, OUTPUT_SIZES, type Rect, type SlotStyle } from '@inframe/shared';
+  import { FONTS, MAX_ASSET_BYTES, matchOutputSize, type Rect, type SlotStyle } from '@inframe/shared';
   import { api } from '$lib/api';
   import { session } from '$lib/session.svelte';
   import { detectWindow, ensureFonts, loadImage, render, type RenderSlot } from '$lib/compositor';
@@ -82,13 +82,17 @@
     try {
       if (!['image/png', 'image/webp'].includes(file.type)) throw new Error('Use a PNG with a transparent photo area.');
       const img = await loadImage(file);
-      if (!OUTPUT_SIZES.some((s) => s.width === img.width && s.height === img.height))
-        throw new Error(`Frame must be 1080×1080 or 1080×1920; yours is ${img.width}×${img.height}.`);
-      const win = detectWindow(img);
-      if (!win) throw new Error('This frame has no transparent area, so there is nowhere for the photo to show. Cut a transparent window in your design and export again as PNG.');
+      const size = matchOutputSize(img.width, img.height);
+      if (!size) throw new Error(`Frame shape must be square (1:1), portrait (4:5) or story (9:16); yours is ${img.width}×${img.height}. Any resolution is fine, such as 3000×3000.`);
+      if (img.width < size.width * 0.5) throw new Error(`Frame is too small (${img.width}×${img.height}). Use at least ${Math.round(size.width / 2)} px wide so it stays sharp.`);
 
-      const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
-      c.getContext('2d')!.drawImage(img, 0, 0);
+      // Resize to the standard output size (high-resolution designs are scaled down; the photo area is found after scaling).
+      const c = document.createElement('canvas'); c.width = size.width; c.height = size.height;
+      const cx = c.getContext('2d')!;
+      cx.imageSmoothingQuality = 'high';
+      cx.drawImage(img, 0, 0, size.width, size.height);
+      const win = detectWindow(c);
+      if (!win) throw new Error('This frame has no transparent area, so there is nowhere for the photo to show. Cut a transparent window in your design and export again as PNG.');
       let blob: Blob | null = null;
       for (const [type, q] of [['image/webp', 0.92], ['image/webp', 0.8], ['image/webp', 0.65]] as const) {
         blob = await new Promise<Blob | null>((res) => c.toBlob(res, type, q));
@@ -100,7 +104,7 @@
       const f = new FormData();
       f.set('file', new File([blob], 'frame.webp', { type: blob.type }));
       f.set('name', file.name.replace(/\.[^.]+$/, '').slice(0, 60) || 'Frame');
-      f.set('width', String(img.width)); f.set('height', String(img.height));
+      f.set('width', String(size.width)); f.set('height', String(size.height));
       f.set('photoWindow', JSON.stringify(win));
       const res = await fetch(`/api/admin/campaigns/${id}/templates`, { method: 'POST', body: f, credentials: 'same-origin' });
       const data = (await res.json().catch(() => ({}))) as { id?: string; error?: string };
@@ -180,7 +184,7 @@
   <section class="card up">
     <div>
       <h2 style="margin-bottom:4px">Frames</h2>
-      <p class="muted" style="margin:0">PNG, 1080×1080 or 1080×1920, with a transparent area where the photo will show. We find the photo area automatically.</p>
+      <p class="muted" style="margin:0">PNG with a transparent area where the photo will show. Square (1:1), portrait (4:5) or story (9:16), at any resolution: we resize it and find the photo area automatically.</p>
     </div>
     <label class="btn" class:disabled={busy}>
       {busy ? 'Working…' : '+ Upload frame'}

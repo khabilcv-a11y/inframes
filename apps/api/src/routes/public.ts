@@ -5,6 +5,7 @@ import { effectiveState } from '../lib/campaign-state.ts';
 import { readSession } from '../lib/session.ts';
 import { canAccessOrg } from '../middleware/auth.ts';
 import { ulid } from '../lib/ids.ts';
+import { turnstileOk } from '../lib/turnstile.ts';
 import { loadTemplates } from './templates.ts';
 import { SELECT, type Row } from './campaigns.ts';
 
@@ -51,6 +52,7 @@ publicRoutes.post('/c/:code/outputs', async (c) => {
   const preview = c.req.query('preview') === '1' && (await previewAllowed(c, r));
   if (preview) return c.json({ id: 'preview', serial: 0 });
   if (effectiveState(r) !== 'live') return c.json({ error: 'not_live' }, 409);
+  if (!(await turnstileOk(c.env.TURNSTILE_SECRET, p.data.turnstileToken, c.req.header('cf-connecting-ip') ?? null))) return c.json({ error: 'bot_check_failed' }, 400);
 
   const t = await c.env.DB.prepare('SELECT id FROM templates WHERE id = ? AND campaign_id = ?').bind(p.data.templateId, r.id).first();
   if (!t) return c.json({ error: 'bad_template' }, 400);
@@ -81,6 +83,9 @@ publicRoutes.post('/c/:code/events', async (c) => {
   }
   return c.json({ ok: true });
 });
+
+// Public settings the browser needs (the Turnstile site key is public by design).
+publicRoutes.get('/config', (c) => c.json({ turnstileSiteKey: c.env.TURNSTILE_SITE_KEY ?? null }));
 
 // Home page: live campaigns and platform totals.
 publicRoutes.get('/live', async (c) => {

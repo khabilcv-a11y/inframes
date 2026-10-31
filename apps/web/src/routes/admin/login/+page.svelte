@@ -3,24 +3,32 @@
   import { api } from '$lib/api';
   import { session } from '$lib/session.svelte';
   import Logo from '$lib/Logo.svelte';
+  import Turnstile from '$lib/Turnstile.svelte';
+  import { onMount } from 'svelte';
   import Viewfinder from '$lib/Viewfinder.svelte';
 
   let email = $state('');
   let password = $state('');
   let error = $state('');
   let busy = $state(false);
+  let siteKey = $state<string | null>(null);
+  let botToken = $state('');
+  let botReset = $state(0);
+  onMount(async () => { const r = await api<{ turnstileSiteKey: string | null }>('/config'); if (r.ok) siteKey = r.data.turnstileSiteKey; });
 
   const messages: Record<string, string> = {
     invalid_credentials: 'Email or password is incorrect.',
     account_locked: 'Too many attempts. Try again in 15 minutes.',
-    invalid_input: 'Enter a valid email and password.'
+    invalid_input: 'Enter a valid email and password.',
+    bot_check_failed: 'Bot check failed. Please try again.'
   };
 
   async function submit(e: SubmitEvent) {
     e.preventDefault();
     busy = true;
     error = '';
-    const r = await api<{ user?: { mustChangePassword: boolean }; error?: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+    const r = await api<{ user?: { mustChangePassword: boolean }; error?: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password, turnstileToken: botToken || undefined }) });
+    botReset++;
     busy = false;
     if (!r.ok) { error = messages[r.data.error ?? ''] ?? 'Something went wrong. Try again.'; return; }
     session.user = null;
@@ -40,8 +48,9 @@
       <p class="muted">Use the email and password your super admin gave you.</p>
       <label class="field">Email <input type="email" autocomplete="username" required bind:value={email} /></label>
       <label class="field">Password <input type="password" autocomplete="current-password" required bind:value={password} /></label>
+      <Turnstile {siteKey} bind:token={botToken} reset={botReset} />
       {#if error}<p class="error" role="alert">{error}</p>{/if}
-      <button class="btn block" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+      <button class="btn block" disabled={busy || (!!siteKey && !botToken)}>{busy ? 'Signing in…' : 'Sign in'}</button>
       <p style="margin:16px 0 0; text-align:center"><a href="/">← Back to home</a></p>
     </form>
   </main>

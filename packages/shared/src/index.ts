@@ -100,9 +100,15 @@ export type CampaignState = 'draft' | 'scheduled' | 'live' | 'paused' | 'ended' 
 
 // ---- Templates and title boxes ----
 export const OUTPUT_SIZES = [
-  { width: 1080, height: 1080 },
-  { width: 1080, height: 1920 }
+  { width: 1080, height: 1080, label: 'Square 1:1' },
+  { width: 1080, height: 1350, label: 'Portrait 4:5' },
+  { width: 1080, height: 1920, label: 'Story 9:16' }
 ] as const;
+
+/** Finds the output size whose shape matches an uploaded frame (within 2%), or null. Any resolution is fine. */
+export function matchOutputSize(w: number, h: number) {
+  return OUTPUT_SIZES.find((s) => Math.abs(w / h - s.width / s.height) / (s.width / s.height) < 0.02) ?? null;
+}
 
 export const FONTS = ['Inter', 'Space Grotesk', 'Poppins', 'Noto Sans', 'Noto Sans Malayalam', 'Manjari', 'Mukta'] as const;
 
@@ -153,7 +159,8 @@ export const updateTemplateSchema = z.object({
 export const outputSchema = z.object({
   templateId: z.string().min(1),
   visitorId: z.string().min(8).max(64),
-  slotValues: z.record(z.string().max(200)).default({})
+  slotValues: z.record(z.string().max(200)).default({}),
+  turnstileToken: z.string().max(4096).optional()
 });
 
 export const EVENT_TYPES = ['visit', 'pick', 'create', 'download', 'share', 'caption_copy', 'error'] as const;

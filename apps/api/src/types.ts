@@ -4,6 +4,7 @@ export interface Env {
   DB: D1Database;
   SESSION_SECRET: string;
   TURNSTILE_SECRET?: string;
+  TURNSTILE_SITE_KEY?: string;
 }
 
 export interface UserRow {

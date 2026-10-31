@@ -5,6 +5,7 @@ import { burnPasswordCheck, hashPassword, verifyPassword } from '../lib/crypto.t
 import { clearSession, issueSession } from '../lib/session.ts';
 import { audit, writeAudit } from '../lib/audit.ts';
 import { requireAuth } from '../middleware/auth.ts';
+import { turnstileOk } from '../lib/turnstile.ts';
 
 const MAX_FAILED = 5;
 const LOCK_MINUTES = 15;
@@ -17,17 +18,6 @@ export const toSessionUser = (u: UserRow): SessionUser => ({
   orgId: u.org_id,
   mustChangePassword: !!u.must_change_password
 });
-
-async function turnstileOk(secret: string | undefined, token: string | undefined, ip: string | null) {
-  if (!secret) return true; // not configured (local dev)
-  if (!token) return false;
-  const body = new FormData();
-  body.set('secret', secret);
-  body.set('response', token);
-  if (ip) body.set('remoteip', ip);
-  const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body });
-  return ((await res.json()) as { success?: boolean }).success === true;
-}
 
 export const auth = new Hono<AppEnv>();
 

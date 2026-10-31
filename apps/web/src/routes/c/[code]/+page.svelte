@@ -5,6 +5,7 @@
   import { api } from '$lib/api';
   import { showIst } from '$lib/time';
   import { dict, detectLang, LANGS, type Key, type Lang } from '$lib/i18n';
+  import Turnstile from '$lib/Turnstile.svelte';
   import { decodePhoto, ensureFonts, loadImage, render, IDENTITY, type RenderSlot, type Transform } from '$lib/compositor';
 
   type Slot = { id: string; label: string; inputType: 'text' | 'dropdown' | 'fixed'; options: string[]; fixedValue: string | null; required: boolean; box: Rect; style: SlotStyle; maxChars: number };
@@ -32,6 +33,9 @@
   let tf: Transform = { ...IDENTITY };
   let raf = 0;
   let visitor = '';
+  let siteKey = $state<string | null>(null);
+  let botToken = $state('');
+  let botReset = $state(0);
 
   const t = (k: Key) => dict[lang][k];
   const tpl = $derived(c?.templates.find((x) => x.id === tplId) ?? null);
@@ -47,6 +51,7 @@
 
   onMount(async () => {
     visitor = vid();
+    api<{ turnstileSiteKey: string | null }>('/config').then((r) => { if (r.ok) siteKey = r.data.turnstileSiteKey; });
     const r = await api<C>(`/c/${code}${q}`);
     if (!r.ok) { missing = true; return; }
     c = r.data;
@@ -139,6 +144,7 @@
   }
   async function create() {
     if (!tpl || !photo || !validate()) return;
+    if (siteKey && !botToken) { error = t('error'); return; }
     busy = true; error = '';
     try {
       const img = frameImgs[tpl.id];
@@ -149,7 +155,8 @@
       render(off.getContext('2d')!, { width: tpl.width, height: tpl.height, frame: img, photo: photo.bitmap, photoSize: { w: photo.w, h: photo.h }, window: tpl.photoWindow, transform: tf, slots: slotsFor(tpl), values: v }, 1);
       const blob = await new Promise<Blob>((res, rej) => off.toBlob((b) => (b ? res(b) : rej(new Error('encode'))), 'image/jpeg', 0.92));
       const slotValues = Object.fromEntries(tpl.slots.filter((s) => s.inputType !== 'fixed').map((s) => [s.id, (values[s.id] ?? '').trim()]));
-      const r = await api<{ serial?: number; error?: string }>(`/c/${code}/outputs${q}`, { method: 'POST', body: JSON.stringify({ templateId: tpl.id, visitorId: visitor, slotValues }) });
+      const r = await api<{ serial?: number; error?: string }>(`/c/${code}/outputs${q}`, { method: 'POST', body: JSON.stringify({ templateId: tpl.id, visitorId: visitor, slotValues, turnstileToken: botToken || undefined }) });
+      botReset++;
       if (!r.ok) {
         if (r.data.error === 'bad_template') await refresh(); // the organiser just changed the frame
         error = r.data.error === 'rate_limited' ? t('tooMany') : t('error');
@@ -283,8 +290,9 @@
                 {#if missingRequired(s.id)}<span class="error">{t('required')}</span>{/if}
               </label>
             {/each}
+            <Turnstile {siteKey} bind:token={botToken} reset={botReset} />
             {#if error}<p class="error" role="alert">{error}</p>{/if}
-            <button class="btn big block" disabled={busy}>{busy ? t('creating') : t('create')}</button>
+            <button class="btn big block" disabled={busy || (!!siteKey && !botToken)}>{busy ? t('creating') : t('create')}</button>
             <label class="link center-link">{t('change')}<input type="file" accept="image/*" onchange={onPick} hidden /></label>
           </form>
         {/if}

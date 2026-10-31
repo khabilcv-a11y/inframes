@@ -60,6 +60,7 @@ test('rejects bad files, sizes and boxes', async () => {
   assert.equal((await upload(req, campId, m1, {}, new File([new Uint8Array(4)], 'a.jpg', { type: 'image/jpeg' }))).status, 400);
   assert.equal((await upload(req, campId, m1, {}, new File([new Uint8Array(1_600_000)], 'a.png', { type: 'image/png' }))).status, 413);
   assert.equal((await upload(req, campId, m1, { width: '1000', height: '1000' })).status, 400);
+  assert.equal((await upload(req, campId, m1, { width: '1080', height: '1350' })).status, 201); // 4:5 portrait is a standard size
   assert.equal((await upload(req, campId, m1, { photoWindow: j({ x: 500, y: 0, w: 900, h: 100 }) })).status, 400);
   const { id } = (await (await upload(req, campId, m1)).json()) as { id: string };
   const bad = [{ ...slots[0], box: { x: 1000, y: 0, w: 200, h: 50 } }];
@@ -121,4 +122,21 @@ test('participant flow: live page, register frame, events, metrics, csv, rate li
   for (let i = 0; i < 20; i++) await req('/c/sed26/outputs', { method: 'POST', body: j({ templateId: tid, visitorId: visitor, slotValues: {} }) });
   assert.equal((await req('/c/sed26/outputs', { method: 'POST', body: j({ templateId: tid, visitorId: visitor, slotValues: {} }) })).status, 429);
   assert.equal((await req(`/admin/templates/${tid}`, { method: 'DELETE' }, m1)).status, 409); // has outputs
+});
+
+test('bot check is dormant without a secret and enforced with one', async () => {
+  const { db, sql } = makeDb();
+  sql.exec(`INSERT INTO organisations (id,name,created_at) VALUES ('O1','DCIP','x');
+    INSERT INTO users (id,org_id,name,email,role,status,created_at) VALUES ('U1','O1','A','a@x.in','manager','active','x');
+    INSERT INTO campaigns (id,org_id,short_code,title,starts_at,ends_at,status,created_by,created_at,updated_at)
+      VALUES ('C1','O1','bot26','T','2020-01-01T00:00:00Z','2099-01-01T00:00:00Z','scheduled','U1','x','x');
+    INSERT INTO assets (id,campaign_id,content_type,bytes,data,created_at) VALUES ('A1','C1','image/png',1,x'00','x');
+    INSERT INTO templates (id,campaign_id,name,width,height,asset_id,photo_window) VALUES ('T1','C1','F',1080,1080,'A1','{"x":0,"y":0,"w":10,"h":10}');`);
+  const post = (env: Record<string, unknown>, token?: string) =>
+    app.request('/api/c/bot26/outputs', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: j({ templateId: 'T1', visitorId: 'visitor-abcdef-1', slotValues: {}, turnstileToken: token }) }, { DB: db, SESSION_SECRET: 'x'.repeat(40), ...env });
+  assert.equal((await post({})).status, 201); // no secret configured: dormant
+  assert.equal((await post({ TURNSTILE_SECRET: 's' })).status, 400); // secret set, no token
+  const cfg = await app.request('/api/config', {}, { DB: db, SESSION_SECRET: 'x'.repeat(40), TURNSTILE_SITE_KEY: 'pub-key' });
+  assert.equal(((await cfg.json()) as any).turnstileSiteKey, 'pub-key');
 });
