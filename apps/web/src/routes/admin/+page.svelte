@@ -23,7 +23,10 @@
 <main style="padding: 48px 16px; max-width: 720px; margin: auto">
   {#if user}
     <h1>Hello, {user.name}</h1>
-    <p>Signed in as {user.email} ({user.role.replace('_', ' ')}). Campaigns, organisations and admins arrive in Milestone 2.</p>
+    <p>Signed in as {user.email} ({user.role.replace('_', ' ')}). Campaigns arrive next.</p>
+    {#if user.role === 'super_admin'}
+      <p><a href="/admin/organisations">Organisations</a> · <a href="/admin/admins">Admins</a></p>
+    {/if}
     <button class="btn" onclick={logout}>Sign out</button>
   {/if}
 </main>

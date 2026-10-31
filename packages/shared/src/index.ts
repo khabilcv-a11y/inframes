@@ -35,3 +35,28 @@ export interface SessionUser {
   orgId: string | null;
   mustChangePassword: boolean;
 }
+
+export const createOrgSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  logoUrl: z.string().url().max(500).optional()
+});
+
+export const updateOrgSchema = z.object({
+  name: z.string().trim().min(2).max(120).optional(),
+  logoUrl: z.string().url().max(500).nullable().optional(),
+  status: z.enum(['active', 'inactive']).optional()
+});
+
+export const createAdminSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  email: z.string().trim().toLowerCase().email().max(254),
+  mobile: z.string().trim().max(20).optional(),
+  orgId: z.string().min(1),
+  role: z.enum(['manager', 'viewer'])
+});
+
+export const updateAdminSchema = z.object({
+  action: z.enum(['suspend', 'reactivate', 'reset_password']).optional(),
+  role: z.enum(['manager', 'viewer']).optional(),
+  orgId: z.string().min(1).optional()
+});

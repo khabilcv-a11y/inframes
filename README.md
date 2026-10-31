@@ -34,4 +34,4 @@ The API runs inside the Pages project (`apps/web/src/hooks.server.ts` serves `/a
 Every push to the production branch redeploys automatically.
 
 ## Status
-Milestone 1 (foundation): schema, login, lockout, sessions, forced password change, audit log — done.
+Milestone 1 (foundation) done. Milestone 2 in progress: super admin organisations and admins done; campaign builder, template upload, Drive connection and scheduler next.
