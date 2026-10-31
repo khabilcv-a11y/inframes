@@ -21,12 +21,17 @@ pnpm dev:web        # web on :5173, /api proxied to :8787
 ```
 Sign in at `/admin/login`; you'll be asked to set a new password.
 
-## Deploying (needs a Cloudflare account)
-1. `wrangler d1 create inframe` → put the id in `apps/api/wrangler.toml`
-2. `pnpm --filter @inframe/api db:migrate:remote`
-3. `wrangler secret put SESSION_SECRET` (and optionally `TURNSTILE_SECRET`)
-4. Seed the super admin against `--remote`, then `pnpm --filter @inframe/api deploy`
-5. Create a Pages project for `apps/web`; route `yourdomain/api/*` to the Worker so the app and API share one origin (the session cookie is `SameSite=Strict`).
+## Deploying (Cloudflare Pages, auto-deploy from GitHub)
+The API runs inside the Pages project (`apps/web/src/hooks.server.ts` serves `/api/*`), so the site and API share one origin.
+1. `npx wrangler d1 create inframe` → put the id in `apps/web/wrangler.toml`
+2. Apply migrations: `cd apps/web && npx wrangler d1 migrations apply inframe --remote`
+3. Pages project → Settings → Builds: connect this GitHub repo; root directory `/`;
+   build command `pnpm install --frozen-lockfile && pnpm --filter @inframe/web build`;
+   output directory `apps/web/.svelte-kit/cloudflare`; production branch as chosen.
+4. Pages → Settings → Variables and Secrets: add secret `SESSION_SECRET` (random 32+ chars);
+   Bindings: D1 database `DB` → `inframe`.
+5. Seed the super admin once with `--remote` (see Local development), then sign in at `/admin/login`.
+Every push to the production branch redeploys automatically.
 
 ## Status
 Milestone 1 (foundation): schema, login, lockout, sessions, forced password change, audit log — done.

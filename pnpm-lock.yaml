@@ -38,13 +38,28 @@ importers:
 
   apps/web:
     dependencies:
+      '@inframe/api':
+        specifier: workspace:*
+        version: link:../api
       '@inframe/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      hono:
+        specifier: ^4.7.0
+        version: 4.13.14
+      jose:
+        specifier: ^5.9.0
+        version: 5.10.0
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
     devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20250101.0
+        version: 4.20260702.1
       '@sveltejs/adapter-cloudflare':
         specifier: ^7.0.0
-        version: 7.2.9(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@5.1.1(svelte@5.57.3)(vite@6.4.5(@types/node@22.20.5)))(svelte@5.57.3)(typescript@5.9.3)(vite@6.4.5(@types/node@22.20.5)))(wrangler@4.156.0(@types/node@22.20.5))
+        version: 7.2.9(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@5.1.1(svelte@5.57.3)(vite@6.4.5(@types/node@22.20.5)))(svelte@5.57.3)(typescript@5.9.3)(vite@6.4.5(@types/node@22.20.5)))(wrangler@4.156.0(@cloudflare/workers-types@4.20260702.1)(@types/node@22.20.5))
       '@sveltejs/kit':
         specifier: ^2.15.0
         version: 2.70.3(@sveltejs/vite-plugin-svelte@5.1.1(svelte@5.57.3)(vite@6.4.5(@types/node@22.20.5)))(svelte@5.57.3)(typescript@5.9.3)(vite@6.4.5(@types/node@22.20.5))
@@ -1568,7 +1583,7 @@ snapshots:
     dependencies:
       acorn: 8.19.0
 
-  '@sveltejs/adapter-cloudflare@7.2.9(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@5.1.1(svelte@5.57.3)(vite@6.4.5(@types/node@22.20.5)))(svelte@5.57.3)(typescript@5.9.3)(vite@6.4.5(@types/node@22.20.5)))(wrangler@4.156.0(@types/node@22.20.5))':
+  '@sveltejs/adapter-cloudflare@7.2.9(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@5.1.1(svelte@5.57.3)(vite@6.4.5(@types/node@22.20.5)))(svelte@5.57.3)(typescript@5.9.3)(vite@6.4.5(@types/node@22.20.5)))(wrangler@4.156.0(@cloudflare/workers-types@4.20260702.1)(@types/node@22.20.5))':
     dependencies:
       '@cloudflare/workers-types': 4.20260702.1
       '@sveltejs/kit': 2.70.3(@sveltejs/vite-plugin-svelte@5.1.1(svelte@5.57.3)(vite@6.4.5(@types/node@22.20.5)))(svelte@5.57.3)(typescript@5.9.3)(vite@6.4.5(@types/node@22.20.5))

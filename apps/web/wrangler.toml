@@ -1,0 +1,11 @@
+name = "inframes"
+compatibility_date = "2025-01-01"
+pages_build_output_dir = ".svelte-kit/cloudflare"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "inframe"
+database_id = "00000000-0000-0000-0000-000000000000"   # replace with id from: wrangler d1 create inframe
+migrations_dir = "../api/migrations"
+
+# Secrets: set SESSION_SECRET (and optionally TURNSTILE_SECRET) in Pages > Settings > Variables and Secrets.
