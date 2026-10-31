@@ -3,8 +3,9 @@
   import { goto } from '$app/navigation';
   import { api } from '$lib/api';
   import PageHeader from '$lib/PageHeader.svelte';
+  import LogoUpload from '$lib/LogoUpload.svelte';
 
-  type Org = { id: string; name: string; status: string; admins: number; campaigns: number };
+  type Org = { id: string; name: string; status: string; admins: number; campaigns: number; logoUrl: string | null };
   let orgs = $state<Org[]>([]);
   let name = $state('');
   let error = $state('');
@@ -43,15 +44,16 @@
 <div class="card" style="padding:0; margin-top:16px">
   <div class="table-wrap">
     <table class="t">
-      <thead><tr><th>Name</th><th>Admins</th><th>Campaigns</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Organisation</th><th>Logo</th><th>Admins</th><th>Campaigns</th><th>Status</th><th></th></tr></thead>
       <tbody>
         {#each orgs as o (o.id)}
           <tr>
-            <td><strong>{o.name}</strong></td><td>{o.admins}</td><td>{o.campaigns}</td>
+            <td><strong>{o.name}</strong></td>
+            <td><LogoUpload endpoint={`/api/admin/organisations/${o.id}/logo`} bind:url={o.logoUrl} label="" /></td><td>{o.admins}</td><td>{o.campaigns}</td>
             <td><span class="badge {o.status}">{o.status}</span></td>
             <td style="text-align:right"><button class="sm" onclick={() => toggle(o)}>{o.status === 'active' ? 'Deactivate' : 'Activate'}</button></td>
           </tr>
-        {:else}<tr><td colspan="5" class="empty">No organisations yet.</td></tr>{/each}
+        {:else}<tr><td colspan="6" class="empty">No organisations yet.</td></tr>{/each}
       </tbody>
     </table>
   </div>

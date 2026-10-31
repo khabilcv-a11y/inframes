@@ -14,7 +14,7 @@ const body = (c: { req: { json: () => Promise<unknown> } }) => c.req.json().catc
 // ---- Organisations ----
 superRoutes.get('/organisations', async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT o.id, o.name, o.logo_url AS logoUrl, o.status, o.created_at AS createdAt,
+    `SELECT o.id, o.name, CASE WHEN o.logo_image_id IS NOT NULL THEN '/api/images/' || o.logo_image_id ELSE o.logo_url END AS logoUrl, o.status, o.created_at AS createdAt,
             (SELECT COUNT(*) FROM users u WHERE u.org_id = o.id) AS admins,
             (SELECT COUNT(*) FROM campaigns k WHERE k.org_id = o.id) AS campaigns
      FROM organisations o ORDER BY o.name`

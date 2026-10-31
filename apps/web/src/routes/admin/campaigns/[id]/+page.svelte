@@ -7,6 +7,7 @@
   import { current, loadCampaign } from '$lib/campaign.svelte';
   import CampaignForm from '$lib/CampaignForm.svelte';
   import { makePosterPdf } from '$lib/poster';
+  import LogoUpload from '$lib/LogoUpload.svelte';
 
   const id = page.params.id!;
   let frames = $state(0);
@@ -14,6 +15,8 @@
   let editing = $state(false);
   let error = $state('');
   let copied = $state(false);
+  let campLogo = $state<string | null>(null);
+  let orgLogo = $state<string | null>(null);
   let qr = $state('');
   const canEdit = $derived(session.user?.role !== 'viewer');
   const c = $derived(current.c!);
@@ -23,7 +26,11 @@
     const r = await api<{ templates: { slots: unknown[] }[] }>(`/admin/campaigns/${id}/templates`);
     if (r.ok) { frames = r.data.templates.length; boxes = r.data.templates.reduce((n, t) => n + t.slots.length, 0); }
   }
-  onMount(loadFrames);
+  onMount(async () => {
+    loadFrames();
+    const r = await api<{ campaign: { ownLogo: boolean; logoUrl: string | null; orgLogoUrl: string | null } }>(`/admin/campaigns/${id}`);
+    if (r.ok) { campLogo = r.data.campaign.ownLogo ? r.data.campaign.logoUrl : null; orgLogo = r.data.campaign.orgLogoUrl; }
+  });
   $effect(() => { if (c) QRCode.toDataURL(link, { margin: 1, width: 360, color: { dark: '#16161A', light: '#FFFFFF' } }).then((u) => (qr = u)); });
 
   const actions: Record<string, [string, string, string][]> = {
@@ -96,6 +103,17 @@
           {#if c.state !== 'archived'}<button class="ghost" onclick={() => (editing = !editing)}>{editing ? 'Close editor' : 'Edit details'}</button>{/if}
         </div>
         {#if c.state === 'draft'}<p class="muted" style="margin:12px 0 0"><small>Testing does not count in your numbers.</small></p>{/if}
+      </section>
+    {/if}
+
+    {#if canEdit}
+      <section class="card">
+        <h2>Logos</h2>
+        <p class="muted" style="margin-top:-4px"><small>Shown on the campaign page and its cards. A campaign without its own logo uses the organisation's.</small></p>
+        <div class="grid" style="gap:16px">
+          <LogoUpload endpoint={`/api/admin/campaigns/${id}/logo`} bind:url={campLogo} label="Campaign logo (optional)" />
+          <LogoUpload endpoint={`/api/admin/organisations/${c.orgId}/logo`} bind:url={orgLogo} label={`${c.orgName} logo`} />
+        </div>
       </section>
     {/if}
 

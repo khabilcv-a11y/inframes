@@ -6,11 +6,12 @@
   import { showIst } from '$lib/time';
   import { dict, detectLang, LANGS, type Key, type Lang } from '$lib/i18n';
   import Turnstile from '$lib/Turnstile.svelte';
+  import CampaignCard, { type Card } from '$lib/CampaignCard.svelte';
   import { decodePhoto, ensureFonts, loadImage, render, IDENTITY, type RenderSlot, type Transform } from '$lib/compositor';
 
   type Slot = { id: string; label: string; inputType: 'text' | 'dropdown' | 'fixed'; options: string[]; fixedValue: string | null; required: boolean; box: Rect; style: SlotStyle; maxChars: number };
   type Tpl = { id: string; name: string; width: number; height: number; assetUrl: string; photoWindow: Rect; slots: Slot[] };
-  type C = { title: string; description: string | null; language: Lang; organisation: string; logoUrl: string | null; state: string; preview: boolean; startsAt: string; caption: string | null; hashtags: string | null; thankYou: string | null; ctaUrl: string | null; outputs: number; templates: Tpl[] };
+  type C = { title: string; description: string | null; language: Lang; organisation: string; orgSlug: string; logoUrl: string | null; more: Card[]; state: string; preview: boolean; startsAt: string; caption: string | null; hashtags: string | null; thankYou: string | null; ctaUrl: string | null; outputs: number; templates: Tpl[] };
 
   const code = page.params.code!;
   const preview = page.url.searchParams.get('preview') === '1';
@@ -201,10 +202,10 @@
 
 <div class="page" lang={lang}>
   <header class="bar">
-    <div class="org">
-      {#if c?.logoUrl}<img src={c.logoUrl} alt="" height="28" />{/if}
+    <a class="org" href={c ? `/o/${c.orgSlug}` : '/'}>
+      {#if c?.logoUrl}<img src={c.logoUrl} alt="" class="av" />{:else if c}<span class="av ph">{c.organisation.slice(0, 1)}</span>{/if}
       <strong>{c?.organisation ?? ''}</strong>
-    </div>
+    </a>
     <select aria-label="Language" value={lang} onchange={(e) => setLang(e.currentTarget.value as Lang)}>
       {#each LANGS as l}<option value={l.code}>{l.label}</option>{/each}
     </select>
@@ -257,16 +258,35 @@
           </div>
         {/if}
 
+        <div class="tile" class:plain={step !== 'landing'}>
         <div class="stage" class:edit={step === 'edit'}>
           <canvas bind:this={canvas} aria-label={c.title}
             onpointerdown={step === 'edit' ? pdown : undefined} onpointermove={step === 'edit' ? pmove : undefined}
             onpointerup={pup} onpointercancel={pup} onwheel={step === 'edit' ? wheel : undefined}></canvas>
         </div>
+        </div>
 
         {#if step === 'landing'}
-          <p class="count">{c.outputs.toLocaleString('en-IN')} {t('people')}</p>
+          <p class="count">{t('people')}: <strong>{c.outputs.toLocaleString('en-IN')}</strong></p>
           <label class="btn big block pick">{t('add')}<input type="file" accept="image/*" onchange={onPick} hidden /></label>
           <p class="privacy">{t('privacy')}</p>
+
+          {#if c.description}
+            <section class="about"><h2>{t('about')}</h2><p>{c.description}</p></section>
+          {/if}
+          <section class="about">
+            <h2>{t('shareLink')}</h2>
+            <div class="row">
+              <button class="sm" onclick={() => copyText(link, 'link')}>{copied === 'link' ? t('linkCopied') : t('copyLink')}</button>
+              <a class="btn ghost sm" href={`https://wa.me/?text=${encodeURIComponent(`${c.title} ${location.origin}/c/${code}`)}`} target="_blank" rel="noopener">WhatsApp</a>
+            </div>
+          </section>
+          {#if c.more?.length}
+            <section class="about">
+              <h2>{t('moreFrom')} {c.organisation}</h2>
+              <div class="more">{#each c.more as m (m.code)}<CampaignCard c={m} />{/each}</div>
+            </section>
+          {/if}
         {:else}
           <p class="muted tip">{t('hint')}</p>
           <div class="tools" role="group" aria-label="Adjust photo">
@@ -301,14 +321,21 @@
     {/if}
   </main>
 
-  <footer><a href="/">{t('powered')}</a></footer>
+  <footer><a href="/">{t('powered')}</a> · <span>{t('credit')} <strong>CV</strong></span></footer>
 </div>
 
 <style>
   .page { min-height: 100vh; display: flex; flex-direction: column; max-width: 520px; margin: 0 auto; }
   .bar { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; gap: 12px; }
   .bar select { width: auto; margin: 0; min-height: 40px; }
-  .org { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .org { display: flex; align-items: center; gap: 10px; min-width: 0; text-decoration: none; color: inherit; }
+  .av { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; background: #fff; border: 1px solid var(--line); flex: none; }
+  .av.ph { display: grid; place-items: center; background: var(--ink); color: #fff; font-weight: 700; border: 0; }
+  .tile { background: #eaf3f1; border-radius: 22px; padding: 16px; margin-top: 8px; }
+  .tile.plain { background: transparent; padding: 0; }
+  .about { margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--line); }
+  .about h2 { font-size: 1.1rem; }
+  .more { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
   .org strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   main { flex: 1; padding: 0 16px 24px; }
   .center { text-align: center; padding: 56px 8px; }
@@ -338,4 +365,5 @@
   .thanks .btn { margin: 8px 0 4px; }
   footer { text-align: center; padding: 16px; font-size: .8rem; }
   footer a { color: var(--muted); }
+  footer strong { color: var(--coral); letter-spacing: .05em; }
 </style>

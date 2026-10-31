@@ -13,7 +13,7 @@ export interface Row {
   id: string; org_id: string; short_code: string; title: string; description: string | null; language: string;
   starts_at: string; ends_at: string; daily_window: string | null; status: string; caption: string | null;
   hashtags: string | null; thank_you: string | null; cta_url: string | null; created_at: string; updated_at: string;
-  org_name?: string;
+  org_name?: string; logo_image_id?: string | null; org_logo_image_id?: string | null; org_logo_url?: string | null;
 }
 
 const present = (r: Row) => ({
@@ -21,10 +21,12 @@ const present = (r: Row) => ({
   description: r.description, language: r.language, startsAt: r.starts_at, endsAt: r.ends_at,
   dailyWindow: r.daily_window ? JSON.parse(r.daily_window) : null, storedStatus: r.status,
   state: effectiveState(r), caption: r.caption, hashtags: r.hashtags, thankYou: r.thank_you,
-  ctaUrl: r.cta_url, createdAt: r.created_at, updatedAt: r.updated_at
+  ctaUrl: r.cta_url, createdAt: r.created_at, updatedAt: r.updated_at, logoUrl: logoOf(r), ownLogo: !!r.logo_image_id,
+  orgLogoUrl: r.org_logo_image_id ? `/api/images/${r.org_logo_image_id}` : r.org_logo_url ?? null
 });
 
-export const SELECT = 'SELECT k.*, o.name AS org_name FROM campaigns k JOIN organisations o ON o.id = k.org_id';
+export const SELECT = 'SELECT k.*, o.name AS org_name, o.logo_image_id AS org_logo_image_id, o.logo_url AS org_logo_url FROM campaigns k JOIN organisations o ON o.id = k.org_id';
+export const logoOf = (r: Row) => r.logo_image_id ? `/api/images/${r.logo_image_id}` : r.org_logo_image_id ? `/api/images/${r.org_logo_image_id}` : r.org_logo_url ?? null;
 const CODE_CHARS = 'abcdefghjkmnpqrstuvwxyz23456789';
 const newCode = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => CODE_CHARS[b % CODE_CHARS.length]).join('');
 

@@ -113,6 +113,13 @@ test('participant flow: live page, register frame, events, metrics, csv, rate li
 
   const live = (await (await req('/live')).json()) as any;
   assert.equal(live.live[0].participants, 2);
+  assert.match(live.live[0].coverUrl, /^\/api\/assets\//); // card thumbnail comes from the first frame
+  assert.equal(live.live[0].orgSlug, 'dcip');
+  assert.equal(((await (await req('/live?q=nothing-here')).json()) as any).campaigns.length, 0);
+  const org = (await (await req('/o/dcip')).json()) as any;
+  assert.equal(org.name, 'DCIP');
+  assert.equal(org.supporters, 2);
+  assert.equal((await req('/o/unknown')).status, 404);
   assert.equal(live.totals.frames, 2);
 
   const ov = (await (await req('/admin/overview', {}, m1)).json()) as any;
@@ -139,4 +146,32 @@ test('bot check is dormant without a secret and enforced with one', async () => 
   assert.equal((await post({ TURNSTILE_SECRET: 's' })).status, 400); // secret set, no token
   const cfg = await app.request('/api/config', {}, { DB: db, SESSION_SECRET: 'x'.repeat(40), TURNSTILE_SITE_KEY: 'pub-key' });
   assert.equal(((await cfg.json()) as any).turnstileSiteKey, 'pub-key');
+});
+
+test('logos: upload, serve, fall back from campaign to organisation, reject bad files, isolate organisations', async () => {
+  const { req, login, m1, campId } = await setup();
+  const form = (f: File) => { const d = new FormData(); d.set('file', f); return d; };
+  const logo = new File([new Uint8Array([1, 2, 3])], 'l.png', { type: 'image/png' });
+
+  const org = await req('/admin/organisations/O1/logo', { method: 'POST', body: form(logo) }, m1);
+  assert.equal(org.status, 200);
+  const { url } = (await org.json()) as { url: string };
+  const img = await req(url.replace('/api', ''));
+  assert.equal(img.headers.get('content-type'), 'image/png');
+
+  // campaign has no logo of its own: it shows the organisation's; its own logo wins once uploaded
+  const c1 = (await (await req(`/admin/campaigns/${campId}`, {}, m1)).json()) as any;
+  assert.equal(c1.campaign.logoUrl, url);
+  assert.equal(c1.campaign.ownLogo, false);
+  const own = (await (await req(`/admin/campaigns/${campId}/logo`, { method: 'POST', body: form(logo) }, m1)).json()) as { url: string };
+  const c2 = (await (await req(`/admin/campaigns/${campId}`, {}, m1)).json()) as any;
+  assert.equal(c2.campaign.logoUrl, own.url);
+  assert.equal((await req(`/admin/campaigns/${campId}/logo`, { method: 'DELETE' }, m1)).status, 200);
+  assert.equal((((await (await req(`/admin/campaigns/${campId}`, {}, m1)).json()) as any).campaign.logoUrl), url);
+
+  assert.equal((await req('/admin/organisations/O1/logo', { method: 'POST', body: form(new File([new Uint8Array(3)], 'x.gif', { type: 'image/gif' })) }, m1)).status, 400);
+  assert.equal((await req('/admin/organisations/O1/logo', { method: 'POST', body: form(new File([new Uint8Array(400_000)], 'x.png', { type: 'image/png' })) }, m1)).status, 413);
+  const m2 = await login('ravi@x.in');
+  assert.equal((await req('/admin/organisations/O1/logo', { method: 'POST', body: form(logo) }, m2)).status, 404);
+  assert.equal((await req(`/admin/campaigns/${campId}/logo`, { method: 'POST', body: form(logo) }, m2)).status, 404);
 });
