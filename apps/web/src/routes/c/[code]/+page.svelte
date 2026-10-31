@@ -19,6 +19,7 @@
 
   let c = $state<C | null>(null);
   let missing = $state(false);
+  let failed = $state(false);
   let lang = $state<Lang>('en');
   let step = $state<'landing' | 'edit' | 'done'>('landing');
   let tplId = $state('');
@@ -54,7 +55,7 @@
     visitor = vid();
     api<{ turnstileSiteKey: string | null }>('/config').then((r) => { if (r.ok) siteKey = r.data.turnstileSiteKey; });
     const r = await api<C>(`/c/${code}${q}`);
-    if (!r.ok) { missing = true; return; }
+    if (!r.ok) { if (r.status === 404) missing = true; else failed = true; return; }
     c = r.data;
     lang = c.language; // set by the organiser in the campaign details
     tplId = c.templates[0]?.id ?? '';
@@ -210,6 +211,8 @@
   <main>
     {#if missing}
       <div class="center"><h1>{t('notFound')}</h1><p class="muted">{t('notFoundHint')}</p></div>
+    {:else if failed}
+      <div class="center"><h1>{t('error')}</h1><p><button class="btn" onclick={() => location.reload()}>Reload</button></p></div>
     {:else if !c}
       <p class="center muted">…</p>
     {:else}
