@@ -9,7 +9,7 @@ import { ulid } from '../lib/ids.ts';
 export const campaigns = new Hono<AppEnv>();
 campaigns.use('*', requireAuth());
 
-interface Row {
+export interface Row {
   id: string; org_id: string; short_code: string; title: string; description: string | null; language: string;
   starts_at: string; ends_at: string; daily_window: string | null; status: string; caption: string | null;
   hashtags: string | null; thank_you: string | null; cta_url: string | null; created_at: string; updated_at: string;
@@ -24,7 +24,7 @@ const present = (r: Row) => ({
   ctaUrl: r.cta_url, createdAt: r.created_at, updatedAt: r.updated_at
 });
 
-const SELECT = 'SELECT k.*, o.name AS org_name FROM campaigns k JOIN organisations o ON o.id = k.org_id';
+export const SELECT = 'SELECT k.*, o.name AS org_name FROM campaigns k JOIN organisations o ON o.id = k.org_id';
 const CODE_CHARS = 'abcdefghjkmnpqrstuvwxyz23456789';
 const newCode = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => CODE_CHARS[b % CODE_CHARS.length]).join('');
 
@@ -125,18 +125,4 @@ campaigns.post('/:id/state', requireRole('super_admin', 'manager'), async (c) =>
   await c.env.DB.prepare('UPDATE campaigns SET status = ?, updated_at = ? WHERE id = ?').bind(t.to, new Date().toISOString(), id).run();
   await audit(c, `campaign.${p.data.action}`, { type: 'campaign', id });
   return c.json({ ok: true });
-});
-
-// Public campaign page data (no login). Drafts and archived campaigns are hidden.
-export const publicCampaign = new Hono<AppEnv>();
-publicCampaign.get('/:code', async (c) => {
-  const r = await c.env.DB.prepare(`${SELECT} WHERE k.short_code = ?`).bind(c.req.param('code').toLowerCase()).first<Row & { org_id: string }>();
-  if (!r || r.status === 'draft' || r.status === 'archived') return c.json({ error: 'not_found' }, 404);
-  const org = await c.env.DB.prepare('SELECT logo_url FROM organisations WHERE id = ?').bind(r.org_id).first<{ logo_url: string | null }>();
-  c.header('cache-control', 'public, max-age=30');
-  return c.json({
-    title: r.title, description: r.description, language: r.language, organisation: r.org_name, logoUrl: org?.logo_url ?? null,
-    state: effectiveState(r), startsAt: r.starts_at, endsAt: r.ends_at, caption: r.caption, hashtags: r.hashtags,
-    thankYou: r.thank_you, ctaUrl: r.cta_url
-  });
 });

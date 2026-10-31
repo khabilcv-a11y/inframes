@@ -1,34 +1,50 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
   import { api } from '$lib/api';
+  import { session } from '$lib/session.svelte';
   import { showIst } from '$lib/time';
+  import PageHeader from '$lib/PageHeader.svelte';
 
   type C = { id: string; title: string; orgName: string; shortCode: string; state: string; startsAt: string; endsAt: string };
   let list = $state<C[]>([]);
-  onMount(async () => {
-    const r = await api<{ campaigns: C[] }>('/admin/campaigns');
-    if (r.status === 401) return goto('/admin/login');
-    list = r.data.campaigns;
-  });
+  let loaded = $state(false);
+  let filter = $state('all');
+  onMount(async () => { const r = await api<{ campaigns: C[] }>('/admin/campaigns'); if (r.ok) list = r.data.campaigns; loaded = true; });
+  const shown = $derived(filter === 'all' ? list : list.filter((c) => c.state === filter));
+  const states = ['all', 'live', 'scheduled', 'draft', 'paused', 'ended'];
 </script>
 
 <svelte:head><title>Campaigns · InFrame</title></svelte:head>
-<main style="padding: 32px 16px; max-width: 860px; margin: auto">
-  <p><a href="/admin">← Back</a></p>
-  <h1>Campaigns</h1>
-  <p><a class="btn" style="display:inline-flex; align-items:center; text-decoration:none" href="/admin/campaigns/new">New campaign</a></p>
-  <table style="width:100%; border-collapse:collapse">
-    <thead><tr style="text-align:left"><th>Title</th><th>Organisation</th><th>State</th><th>Runs</th></tr></thead>
-    <tbody>
-      {#each list as c (c.id)}
-        <tr style="border-top:1px solid #e3e3de">
-          <td><a href={`/admin/campaigns/${c.id}`}>{c.title}</a><br /><small>/c/{c.shortCode}</small></td>
-          <td>{c.orgName}</td><td>{c.state}</td><td><small>{showIst(c.startsAt)} → {showIst(c.endsAt)}</small></td>
-        </tr>
-      {:else}
-        <tr><td colspan="4">No campaigns yet.</td></tr>
-      {/each}
-    </tbody>
-  </table>
-</main>
+<PageHeader title="Campaigns">
+  {#snippet actions()}{#if session.user?.role !== 'viewer'}<a class="btn" href="/admin/campaigns/new">+ New campaign</a>{/if}{/snippet}
+</PageHeader>
+
+<div class="row" style="margin-bottom:16px" role="tablist" aria-label="Filter by state">
+  {#each states as s}
+    <button class="sm chip" class:on={filter === s} onclick={() => (filter = s)}>{s === 'all' ? 'All' : s[0].toUpperCase() + s.slice(1)}</button>
+  {/each}
+</div>
+
+<div class="card" style="padding:0">
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Campaign</th><th>Organisation</th><th>State</th><th>Runs (India time)</th></tr></thead>
+      <tbody>
+        {#each shown as c (c.id)}
+          <tr>
+            <td><a href={`/admin/campaigns/${c.id}`}><strong>{c.title}</strong></a><br /><small>/c/{c.shortCode}</small></td>
+            <td>{c.orgName}</td>
+            <td><span class="badge {c.state}">{c.state}</span></td>
+            <td><small>{showIst(c.startsAt)} → {showIst(c.endsAt)}</small></td>
+          </tr>
+        {:else}
+          <tr><td colspan="4" class="empty">{loaded ? 'No campaigns here yet.' : 'Loading…'}</td></tr>
+        {/each}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+  .chip.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+</style>

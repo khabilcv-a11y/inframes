@@ -30,7 +30,7 @@
 </script>
 
 <form onsubmit={submit}>
-  <h2>1. Basics</h2>
+  <h2>Basics</h2>
   {#if orgs.length}
     <label class="field">Organisation
       <select required bind:value={f.orgId} style="width:100%; min-height:48px"><option value="" disabled>Choose…</option>{#each orgs as o}<option value={o.id}>{o.name}</option>{/each}</select>
@@ -41,18 +41,25 @@
   <label class="field">Page language
     <select bind:value={f.language} style="width:100%; min-height:48px"><option value="en">English</option><option value="ml">മലയാളം</option><option value="hi">हिन्दी</option></select>
   </label>
-  <label class="field">Link code (leave empty to auto-generate) <input bind:value={f.shortCode} pattern="[a-zA-Z0-9]{'{4,12}'}" placeholder="kz26vd" /></label>
+  <label class="field">Link code <span class="hint">Optional. Letters and numbers only, 4 to 12 characters. Leave empty to generate one.</span><input bind:value={f.shortCode} pattern="[a-zA-Z0-9]{'{4,12}'}" placeholder="kz26vd" /></label>
 
-  <h2>2. Schedule (India time)</h2>
-  <label class="field">Starts <input type="datetime-local" required bind:value={f.startsAt} /></label>
-  <label class="field">Ends <input type="datetime-local" required bind:value={f.endsAt} /></label>
+  <h2 style="margin-top:28px">Schedule <small>(India time)</small></h2>
+  <div class="two">
+    <label class="field">Starts <input type="datetime-local" required bind:value={f.startsAt} /></label>
+    <label class="field">Ends <input type="datetime-local" required bind:value={f.endsAt} /></label>
+  </div>
 
-  <h2>3. Sharing</h2>
-  <label class="field">Caption people can copy <input bind:value={f.caption} /></label>
+  <h2 style="margin-top:28px">Sharing</h2>
+  <label class="field">Caption people can copy <textarea rows="3" bind:value={f.caption} placeholder="Proudly representing my college in the Special Enrollment Drive!"></textarea></label>
   <label class="field">Hashtags <input bind:value={f.hashtags} placeholder="#VoteKerala" /></label>
-  <label class="field">Thank-you message <input bind:value={f.thankYou} /></label>
-  <label class="field">Call-to-action link <input type="url" bind:value={f.ctaUrl} placeholder="https://" /></label>
+  <label class="field">Thank-you message <textarea rows="3" bind:value={f.thankYou}></textarea></label>
+  <label class="field">Call-to-action link <span class="hint">Shown on the thank-you screen. Leave empty to use this campaign's own link.</span><input type="url" bind:value={f.ctaUrl} placeholder="https://" /></label>
 
   {#if error}<p class="error" role="alert">{error}</p>{/if}
   <button class="btn">{submitLabel}</button>
 </form>
+
+<style>
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 520px) { .two { grid-template-columns: 1fr; } }
+</style>

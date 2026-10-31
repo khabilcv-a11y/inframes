@@ -2,6 +2,28 @@
 
 Oct 31, 2026 · @Doshesh
 
+> **Status: Draft v1.1** — decisions and build notes added 31 Oct 2026. Sections below are the original v1 text; the table here records what the owner decided and where the build differs, and wins where they disagree.
+
+## 0. Decisions and changes since draft v1
+
+| # | Topic | Decision / change |
+| --- | --- | --- |
+| 1 | Super admin | khabilcv@gmail.com |
+| 2 | Drive account | Same account (khabilcv@gmail.com), **5 TB** storage. The 15 GB capacity plan and the 80% alert in section 8 are no longer a constraint; the per-campaign "save videos to Drive" switch stays as a convenience. Drive saving is built last (needs Google OAuth credentials). |
+| 3 | Domain | Stay on **inframes.pages.dev** for now. A custom domain can be attached later with no code change. |
+| 4 | Hosting | One Cloudflare **Pages** project serves the site *and* the API (`/api/*` handled in `hooks.server.ts`), so the `SameSite=Strict` session cookie works on a single origin. Auto-deploys from GitHub. A separate Worker is not used. |
+| 5 | Password hashing | Cloudflare Workers caps PBKDF2 at **100,000** iterations (the draft asked for 310,000). 100,000 is used; the hash records its own iteration count so it can be raised later. |
+| 6 | Scheduler | No per-minute cron (Pages has none). Scheduled/Live/Ended is **derived from the clock** (start, end, optional daily window in IST) every time a campaign is read, so it flips exactly on time. Only manual states (draft, paused, ended early, archived) are stored. |
+| 7 | Admin invites | Email invites are **deferred**. The super admin creates an admin and is shown a one-time temporary password (with a copy button); the admin must change it at first sign-in. |
+| 8 | Frame storage | Frames are re-encoded in the browser (WebP, under 1.5 MB) and stored in D1 (`assets` table) instead of R2/Drive. No extra account setup; the API can move to R2 later. |
+| 9 | Output storage | Participants' finished frames are **not uploaded** yet: only the typed values and a serial number are recorded. Drive upload is the last step of the build. The original photo never leaves the phone. |
+| 10 | Programme | The first campaign is the **Special Enrollment Drive** (DCIP Kozhikode). Participants represent their **college**: each frame has a *Your name* box and a *Your college* dropdown. |
+| 11 | Participant counter | Wording is "N frames created" (no InFrame branding on participant outputs). |
+| 12 | Home page | The hero is an interactive logo puzzle: the InFrame wordmark is made of loose characters that spring home, are pushed by the cursor, scatter on click, and four viewfinder corners can be dragged into place to "snap the frame" (flash). Reduced-motion visitors get the finished logo. |
+| 13 | Admin UI | Sidebar console (Dashboard, Campaigns, Organisations, Admins, Activity log), campaign workspace with Overview / Frames & titles / Results tabs, mobile drawer menu. |
+
+**Build status.** Done: foundation, auth and lockout, organisations, admins, campaigns and scheduling, frame upload with automatic photo-area detection, drag-to-draw title boxes with stress test, participant photo editor (drag, pinch, rotate, auto-fit text, English/Malayalam/Hindi), share/download/copy caption, anonymous funnel events, results dashboard, CSV export, activity log, interactive home page. **Not yet:** video (paths A/B/C), Google Drive upload, Cloudflare Turnstile, email invites, public wall / TV mode, "Remove my output" link, retention clean-up, QR poster PDF (QR PNG exists).
+
 ## 1. Overview
 
 InFrame is a free, in-house web platform where our admins schedule event campaigns with branded photo and video frames, and participants turn their own photo or clip into a framed, named, ready-to-post output in under 60 seconds.
@@ -556,10 +578,10 @@ inframe/
 
 ## 15. Open decisions
 
-- [ ] Domain name: a new short domain, or a subdomain of an existing institutional site?
-- [ ] Which Google account owns the Drive storage, and who in the institution holds its recovery details?
-- [ ] Typical campaign size (hundreds or thousands of participants), to confirm whether 15 GB of Drive is enough or a paid Google plan is needed.
+- [x] Domain name: stay on inframes.pages.dev for now; custom domain later.
+- [x] Drive account: khabilcv@gmail.com (5 TB). Recovery details holder still to be named.
+- [x] Capacity: 5 TB is ample for photo campaigns.
 - [ ] Should each output carry a participant serial number ("InFrame No. 1,284"), as an optional text slot type?
 - [ ] Should campaigns offer an optional public wall and stage TV mode in v1, or later?
-- [ ] Front-end framework: SvelteKit (recommended for speed) or Next.js (if the developer team already knows React)?
+- [x] Front-end framework: SvelteKit.
 - [ ] Default retention period for outputs: 12 months, or different for government events?

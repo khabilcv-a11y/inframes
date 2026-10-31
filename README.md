@@ -34,4 +34,6 @@ The API runs inside the Pages project (`apps/web/src/hooks.server.ts` serves `/a
 Every push to the production branch redeploys automatically.
 
 ## Status
-Milestone 1 (foundation) done. Milestone 2 in progress: organisations, admins and campaigns (create, edit, schedule, publish, pause, end, public link) done; template upload, Drive connection next.
+See "0. Decisions and changes" and "Build status" in [docs/SPEC.md](docs/SPEC.md).
+
+Database changes are applied in order from `apps/api/migrations/`. For the Cloudflare D1 console (which flattens line breaks), comment-free copies are in `docs/d1-console-paste*.sql`.
