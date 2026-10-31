@@ -4,13 +4,14 @@
   // The InFrame wordmark is built from thousands of loose characters. They spring home, the cursor
   // pushes them away, a click scatters them, and four coral viewfinder corners can be dragged into
   // place to "snap the frame" (camera flash). Reduced-motion visitors get the finished state.
-  let { onsolved }: { onsolved?: () => void } = $props();
+  // `text` is what the loose characters spell; `compact` is the slim banner used on campaign pages.
+  let { text = 'InFrame', compact = false, onsolved }: { text?: string; compact?: boolean; onsolved?: () => void } = $props();
 
   type P = { x: number; y: number; vx: number; vy: number; hx: number; hy: number; ch: string; a: number };
   type Corner = { id: 'tl' | 'tr' | 'bl' | 'br'; x: number; y: number; tx: number; ty: number; snapped: boolean; drag: boolean };
 
   const CHARS = 'INFRAME@#10';
-  const SIZE = 46; // corner piece size
+  const SIZE = compact ? 30 : 46; // corner piece size
   let wrap = $state<HTMLDivElement>();
   let canvas = $state<HTMLCanvasElement>();
   let corners = $state<Corner[]>([]);
@@ -19,7 +20,7 @@
   let reduce = false;
 
   let particles: P[] = [];
-  let W = 0, H = 0, raf = 0, running = false, dpr = 1, glyph = 12, wordmark = '';
+  let W = 0, H = 0, raf = 0, running = false, dpr = 1, glyph = 12, wordmark = '', lines: string[] = [text], lh = 0;
   let pointer = { x: -999, y: -999, down: false };
   let textBox = { x: 0, y: 0, w: 0, h: 0 };
   const dragOff = { x: 0, y: 0 };
@@ -33,12 +34,24 @@
     // Rasterise the wordmark and sample it into character particles.
     const off = document.createElement('canvas'); off.width = W; off.height = H;
     const o = off.getContext('2d', { willReadFrequently: true })!;
-    const fs = Math.min(W * 0.2, 150);
-    o.font = `700 ${fs}px "Space Grotesk", sans-serif`;
+    const stack = '"Space Grotesk", "Noto Sans Malayalam", "Mukta", sans-serif';
+    // Long campaign titles go on two lines so the letters stay big enough to read.
+    lines = [text];
+    if (compact && text.includes(' ') && text.length > 12) {
+      const mid = text.length / 2;
+      let cut = -1;
+      for (let i = 0; i < text.length; i++) if (text[i] === ' ' && (cut < 0 || Math.abs(i - mid) < Math.abs(cut - mid))) cut = i;
+      lines = [text.slice(0, cut), text.slice(cut + 1)];
+    }
+    o.font = `700 100px ${stack}`;
+    const per100 = Math.max(1, ...lines.map((l) => o.measureText(l).width));
+    const fs = Math.max(14, Math.min(compact ? 90 : 150, W * 0.2 * (compact ? 1.6 : 1), (W * 0.84 * 100) / per100, (H * (compact ? 0.62 : 0.5)) / (lines.length * 1.12)));
+    lh = fs * 1.12;
+    o.font = `700 ${fs}px ${stack}`;
     o.textAlign = 'center'; o.textBaseline = 'middle'; o.fillStyle = '#fff';
-    o.fillText('InFrame', W / 2, H / 2);
-    const m = o.measureText('InFrame');
-    textBox = { x: W / 2 - m.width / 2, y: H / 2 - fs * 0.38, w: m.width, h: fs * 0.76 };
+    lines.forEach((l, i) => o.fillText(l, W / 2, H / 2 + (i - (lines.length - 1) / 2) * lh));
+    const tw = Math.max(...lines.map((l) => o.measureText(l).width));
+    textBox = { x: W / 2 - tw / 2, y: H / 2 - ((lines.length - 1) / 2) * lh - fs * 0.38, w: tw, h: (lines.length - 1) * lh + fs * 0.76 };
     const img = o.getImageData(0, 0, W, H).data;
 
     const cap = W < 600 ? 420 : 1000;
@@ -49,7 +62,7 @@
       step++;
     } while (pts.length > cap);
     glyph = Math.max(9, Math.round((step - 1) * 1.15));
-    wordmark = `700 ${fs}px "Space Grotesk", sans-serif`;
+    wordmark = `700 ${fs}px ${stack}`;
 
     particles = pts.map(([hx, hy]) => ({
       hx, hy, x: reduce ? hx : Math.random() * W, y: reduce ? hy : Math.random() * H, vx: 0, vy: 0,
@@ -65,13 +78,19 @@
     }));
   }
 
+  /** The solid wordmark (one or two lines) used as a faint underlay and for the static state. */
+  function drawLines(ctx: CanvasRenderingContext2D) {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    lines.forEach((l, i) => ctx.fillText(l, W / 2, H / 2 + (i - (lines.length - 1) / 2) * lh));
+  }
+
   function frame() {
     const ctx = canvas!.getContext('2d')!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
     // faint solid wordmark so the logo always reads clearly, whatever the letters are doing
-    ctx.font = wordmark; ctx.fillStyle = solved ? 'rgba(232,85,61,.20)' : 'rgba(255,255,255,.10)';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('InFrame', W / 2, H / 2);
+    ctx.font = wordmark; ctx.fillStyle = solved ? 'rgba(232,85,61,.24)' : compact ? 'rgba(255,255,255,.2)' : 'rgba(255,255,255,.10)';
+    drawLines(ctx);
     ctx.font = `600 ${glyph}px "Space Grotesk", monospace`;
     const R = 95, R2 = R * R;
     for (const p of particles) {
@@ -93,8 +112,7 @@
     if (!canvas) return;
     const ctx = canvas.getContext('2d')!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
-    ctx.font = wordmark; ctx.fillStyle = solved ? 'rgba(232,85,61,.9)' : '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('InFrame', W / 2, H / 2);
+    ctx.font = wordmark; ctx.fillStyle = solved ? 'rgba(232,85,61,.9)' : '#ffffff'; drawLines(ctx);
     ctx.font = `600 ${glyph}px "Space Grotesk", monospace`;
     ctx.fillStyle = solved ? '#E8553D' : '#ffffff';
     for (const p of particles) ctx.fillText(p.ch, p.x, p.y);
@@ -142,7 +160,7 @@
   onMount(() => {
     reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const go = () => { build(); if (reduce) { solved = true; drawStatic(); } else start(); };
-    (document.fonts?.load('700 100px "Space Grotesk"') ?? Promise.resolve()).then(go, go);
+    (Promise.all([document.fonts?.load('700 100px "Space Grotesk"', text), document.fonts?.load('700 100px "Noto Sans Malayalam"', text), document.fonts?.load('700 100px "Mukta"', text)]) ?? Promise.resolve()).then(go, go);
     const io = new IntersectionObserver(([e]) => (e.isIntersecting ? start() : stop()), { threshold: 0.05 });
     io.observe(wrap!);
     let t: ReturnType<typeof setTimeout>;
@@ -152,7 +170,7 @@
   });
 </script>
 
-<div class="wrap" bind:this={wrap} role="group" aria-label="Interactive InFrame logo puzzle">
+<div class="wrap" class:compact bind:this={wrap} role="group" aria-label="Interactive InFrame logo puzzle">
   <canvas bind:this={canvas} style="width:100%; height:100%" onpointermove={move} onpointerleave={leave} onpointerdown={canvasDown} onpointerup={() => (pointer.down = false)} aria-hidden="true"></canvas>
 
   {#each corners as c (c.id)}
@@ -164,7 +182,7 @@
   <div class="flash" class:on={flash} aria-hidden="true"></div>
 
   <p class="hint" aria-live="polite">
-    {#if solved}You’re in the frame. 📸{:else}Drag the four corners around the logo. Move your cursor through the letters. Click to scatter.{/if}
+    {#if solved}You’re in the frame. 📸{:else if compact}Touch the letters. Drag the corners to frame it.{:else}Drag the four corners around the logo. Move your cursor through the letters. Click to scatter.{/if}
   </p>
   <div class="ctl">
     {#if !solved}<button class="sm" onclick={solve}>Snap it for me</button>{:else}<button class="sm" onclick={shuffle}>Play again</button>{/if}
@@ -173,6 +191,11 @@
 
 <style>
   .wrap { position: relative; height: clamp(240px, 38vw, 360px); width: 100%; user-select: none; -webkit-user-select: none; overflow: hidden; }
+  .wrap.compact { height: clamp(190px, 48vw, 230px); background: var(--ink); border-radius: 16px; margin: 4px 0 12px; }
+  .compact .hint { font-size: .72rem; bottom: 4px; }
+  .compact .tl, .compact .tr, .compact .bl, .compact .br { border-width: 0; }
+  .compact .tl { border-top-width: 4px; border-left-width: 4px; } .compact .tr { border-top-width: 4px; border-right-width: 4px; }
+  .compact .bl { border-bottom-width: 4px; border-left-width: 4px; } .compact .br { border-bottom-width: 4px; border-right-width: 4px; }
   canvas { display: block; touch-action: pan-y; cursor: crosshair; }
   .corner { position: absolute; touch-action: none; cursor: grab; border: 0 solid var(--coral); filter: drop-shadow(0 0 8px rgb(232 85 61 / 45%)); transition: transform .12s; z-index: 2; }
   .corner:not(.snapped):hover { transform: scale(1.12); }
@@ -191,6 +214,7 @@
   @keyframes fade { to { opacity: 0; } }
   .hint { position: absolute; left: 0; right: 0; bottom: 6px; margin: 0; text-align: center; color: #9a9aa6; font-size: .82rem; pointer-events: none; padding: 0 12px; }
   .ctl { position: absolute; right: 8px; top: 8px; z-index: 4; }
+  .compact .ctl button { min-height: 30px; font-size: .75rem; padding: 0 10px; }
   .ctl button { background: rgb(255 255 255 / 8%); color: #d9d9e0; border-color: #3a3a44; }
   .ctl button:hover:not(:disabled) { background: rgb(255 255 255 / 16%); }
 </style>

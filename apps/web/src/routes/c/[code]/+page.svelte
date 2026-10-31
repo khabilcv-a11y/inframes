@@ -7,6 +7,7 @@
   import { dict, type Key, type Lang } from '$lib/i18n';
   import Turnstile from '$lib/Turnstile.svelte';
   import CampaignCard, { type Card } from '$lib/CampaignCard.svelte';
+  import LogoPuzzle from '$lib/LogoPuzzle.svelte';
   import { decodePhoto, ensureFonts, loadImage, render, IDENTITY, type RenderSlot, type Transform } from '$lib/compositor';
 
   type Slot = { id: string; label: string; inputType: 'text' | 'dropdown' | 'fixed'; options: string[]; fixedValue: string | null; required: boolean; box: Rect; style: SlotStyle; maxChars: number };
@@ -272,7 +273,8 @@
           </section>
         </div>
       {:else}
-        <div class="head">
+        {#if step === 'landing'}<LogoPuzzle text={c.title} compact />{/if}
+        <div class="head" class:sr={step === 'landing'}>
           <h1>{c.title}</h1>
           {#if c.description}<p class="muted">{c.description}</p>{/if}
         </div>
@@ -375,6 +377,7 @@
   main { flex: 1; padding: 0 16px 24px; }
   .center { text-align: center; padding: 56px 8px; }
   .head h1 { margin-bottom: 4px; font-size: 1.6rem; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .preview { background: var(--warn-bg); color: var(--warn); padding: 8px 12px; border-radius: 10px; font-weight: 600; font-size: .9rem; }
   .strip { display: flex; gap: 10px; overflow-x: auto; padding: 4px 0 12px; }
   .strip button { padding: 3px; width: 72px; height: 72px; flex: none; border: 2px solid var(--line); background: #fff; }
