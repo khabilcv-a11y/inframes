@@ -13,7 +13,7 @@ export interface Row {
   id: string; org_id: string; short_code: string; title: string; description: string | null; language: string;
   starts_at: string; ends_at: string; daily_window: string | null; status: string; caption: string | null;
   hashtags: string | null; thank_you: string | null; cta_url: string | null; created_at: string; updated_at: string;
-  org_name?: string; logo_image_id?: string | null; org_logo_image_id?: string | null; org_logo_url?: string | null;
+  save_mode?: string; org_name?: string; logo_image_id?: string | null; org_logo_image_id?: string | null; org_logo_url?: string | null;
 }
 
 const present = (r: Row) => ({
@@ -21,7 +21,7 @@ const present = (r: Row) => ({
   description: r.description, language: r.language, startsAt: r.starts_at, endsAt: r.ends_at,
   dailyWindow: r.daily_window ? JSON.parse(r.daily_window) : null, storedStatus: r.status,
   state: effectiveState(r), caption: r.caption, hashtags: r.hashtags, thankYou: r.thank_you,
-  ctaUrl: r.cta_url, createdAt: r.created_at, updatedAt: r.updated_at, logoUrl: logoOf(r), ownLogo: !!r.logo_image_id,
+  ctaUrl: r.cta_url, createdAt: r.created_at, updatedAt: r.updated_at, logoUrl: logoOf(r), ownLogo: !!r.logo_image_id, saveMode: r.save_mode ?? 'off',
   orgLogoUrl: r.org_logo_image_id ? `/api/images/${r.org_logo_image_id}` : r.org_logo_url ?? null
 });
 
@@ -69,11 +69,11 @@ campaigns.post('/', requireRole('super_admin', 'manager'), async (c) => {
   const now = new Date().toISOString();
   await c.env.DB.prepare(
     `INSERT INTO campaigns (id, org_id, short_code, title, description, language, starts_at, ends_at, daily_window,
-       status, caption, hashtags, thank_you, cta_url, created_by, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,'draft',?,?,?,?,?,?,?)`
+       status, caption, hashtags, thank_you, cta_url, save_mode, created_by, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,'draft',?,?,?,?,?,?,?,?)`
   )
     .bind(id, orgId, code, d.title, d.description ?? null, d.language, new Date(d.startsAt).toISOString(), new Date(d.endsAt).toISOString(),
-      d.dailyWindow ? JSON.stringify(d.dailyWindow) : null, d.caption ?? null, d.hashtags ?? null, d.thankYou ?? null, d.ctaUrl ?? null, u.id, now, now)
+      d.dailyWindow ? JSON.stringify(d.dailyWindow) : null, d.caption ?? null, d.hashtags ?? null, d.thankYou ?? null, d.ctaUrl ?? null, d.saveMode ?? 'off', u.id, now, now)
     .run();
   await audit(c, 'campaign.create', { type: 'campaign', id }, { title: d.title, shortCode: code });
   return c.json({ id, shortCode: code }, 201);
@@ -95,12 +95,12 @@ campaigns.patch('/:id', requireRole('super_admin', 'manager'), async (c) => {
   const pick = <T>(v: T | undefined, old: T | null) => (v === undefined ? old : v);
   await c.env.DB.prepare(
     `UPDATE campaigns SET title=?, description=?, language=?, starts_at=?, ends_at=?, daily_window=?, caption=?, hashtags=?,
-       thank_you=?, cta_url=?, short_code=?, updated_at=? WHERE id=?`
+       thank_you=?, cta_url=?, short_code=?, save_mode=?, updated_at=? WHERE id=?`
   )
     .bind(pick(d.title, r.title), pick(d.description, r.description), pick(d.language, r.language), startsAt, endsAt,
       d.dailyWindow === undefined ? r.daily_window : d.dailyWindow ? JSON.stringify(d.dailyWindow) : null,
       pick(d.caption, r.caption), pick(d.hashtags, r.hashtags), pick(d.thankYou, r.thank_you), pick(d.ctaUrl, r.cta_url),
-      pick(d.shortCode, r.short_code), new Date().toISOString(), id)
+      pick(d.shortCode, r.short_code), pick(d.saveMode, r.save_mode ?? 'off'), new Date().toISOString(), id)
     .run();
   await audit(c, 'campaign.update', { type: 'campaign', id }, Object.keys(d));
   return c.json({ ok: true });

@@ -3,7 +3,7 @@
 
   type Initial = {
     title?: string; description?: string | null; language?: string; startsAt?: string; endsAt?: string;
-    caption?: string | null; hashtags?: string | null; thankYou?: string | null; ctaUrl?: string | null; shortCode?: string;
+    caption?: string | null; hashtags?: string | null; thankYou?: string | null; ctaUrl?: string | null; shortCode?: string; saveMode?: string;
   };
   let { initial = {}, orgs = [], submitLabel, onsubmit, error = '' }: {
     initial?: Initial; orgs?: { id: string; name: string }[]; submitLabel: string;
@@ -14,7 +14,7 @@
     title: initial.title ?? '', description: initial.description ?? '', language: initial.language ?? 'en',
     startsAt: initial.startsAt ? isoToIstInput(initial.startsAt) : '', endsAt: initial.endsAt ? isoToIstInput(initial.endsAt) : '',
     caption: initial.caption ?? '', hashtags: initial.hashtags ?? '', thankYou: initial.thankYou ?? '',
-    ctaUrl: initial.ctaUrl ?? '', shortCode: initial.shortCode ?? '', orgId: ''
+    ctaUrl: initial.ctaUrl ?? '', shortCode: initial.shortCode ?? '', orgId: '', saveMode: initial.saveMode ?? 'off'
   });
 
   function submit(e: SubmitEvent) {
@@ -24,7 +24,7 @@
       title: f.title, description: clean(f.description), language: f.language,
       startsAt: istInputToIso(f.startsAt), endsAt: istInputToIso(f.endsAt),
       caption: clean(f.caption), hashtags: clean(f.hashtags), thankYou: clean(f.thankYou), ctaUrl: clean(f.ctaUrl),
-      shortCode: clean(f.shortCode)?.toLowerCase(), orgId: clean(f.orgId)
+      shortCode: clean(f.shortCode)?.toLowerCase(), orgId: clean(f.orgId), saveMode: f.saveMode
     });
   }
 </script>
@@ -54,6 +54,17 @@
   <label class="field">Hashtags <input bind:value={f.hashtags} placeholder="#VoteKerala" /></label>
   <label class="field">Thank-you message <textarea rows="3" bind:value={f.thankYou}></textarea></label>
   <label class="field">Call-to-action link <span class="hint">Shown on the thank-you screen. Leave empty to use this campaign's own link.</span><input type="url" bind:value={f.ctaUrl} placeholder="https://" /></label>
+
+  <h2 style="margin-top:28px">Save to Google Drive</h2>
+  <label class="field">What to save for this campaign
+    <select bind:value={f.saveMode}>
+      <option value="off">Nothing (numbers only)</option>
+      <option value="raw">Original photos only</option>
+      <option value="framed">Finished framed pictures only</option>
+      <option value="both">Both</option>
+    </select>
+    <span class="hint">Files go into a folder for this campaign, named from what people type (college, name). Saving original photos shows participants a consent tick box. Needs Google Drive to be connected under Google Drive in the menu.</span>
+  </label>
 
   {#if error}<p class="error" role="alert">{error}</p>{/if}
   <button class="btn">{submitLabel}</button>

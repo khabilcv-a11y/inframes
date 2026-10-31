@@ -94,7 +94,7 @@ test('participant flow: live page, register frame, events, metrics, csv, rate li
   const slotIds = pub.templates[0].slots.map((s: any) => s.id);
 
   const visitor = 'visitor-abcdef-1';
-  await req('/c/sed26/events', { method: 'POST', body: j({ visitorId: visitor, events: [{ type: 'visit' }, { type: 'pick' }] }) });
+  await req('/c/sed26/events', { method: 'POST', body: j({ visitorId: visitor, events: [{ type: 'visit', meta: { ref: 'share' } }, { type: 'pick' }] }) });
   const o1 = await req('/c/sed26/outputs', { method: 'POST', body: j({ templateId: tid, visitorId: visitor, slotValues: { [slotIds[0]]: 'Asha Menon', [slotIds[1]]: 'MES College' } }) });
   assert.equal(o1.status, 201);
   assert.equal(((await o1.json()) as any).serial, 1);
@@ -106,6 +106,7 @@ test('participant flow: live page, register frame, events, metrics, csv, rate li
   assert.deepEqual(m.funnel, { visits: 1, picked: 1, created: 2, shared: 1, downloaded: 0 });
   assert.deepEqual(m.byDropdown.rows, [{ name: 'MES College', count: 2 }]);
   assert.equal(m.byDropdown.label, 'Your college');
+  assert.deepEqual(m.byRef, [{ name: 'share', count: 1 }]);
 
   const csv = await (await req(`/admin/campaigns/${campId}/export.csv`, {}, m1)).text();
   assert.match(csv, /"Your name","Your college"/);

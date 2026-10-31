@@ -7,6 +7,8 @@ import { templates } from './routes/templates.ts';
 import { publicRoutes } from './routes/public.ts';
 import { insights } from './routes/insights.ts';
 import { images } from './routes/images.ts';
+import { drive } from './routes/drive.ts';
+import { uploads } from './routes/uploads.ts';
 
 export const app = new Hono<AppEnv>().basePath('/api');
 
@@ -16,6 +18,8 @@ app.route('/super', superRoutes);
 app.route('/admin/campaigns', campaigns);
 app.route('/', templates);
 app.route('/', images);
+app.route('/', drive);
+app.route('/', uploads);
 app.route('/', publicRoutes);
 app.route('/', insights);
 

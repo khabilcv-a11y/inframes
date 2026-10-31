@@ -12,8 +12,8 @@
 
   type Slot = { id: string; label: string; inputType: 'text' | 'dropdown' | 'fixed'; options: string[]; fixedValue: string | null; required: boolean; box: Rect; style: SlotStyle; maxChars: number };
   type Tpl = { id: string; name: string; width: number; height: number; assetUrl: string; photoWindows: Rect[]; slots: Slot[] };
-  type Pic = { bitmap: ImageBitmap; w: number; h: number; tf: Transform };
-  type C = { title: string; description: string | null; language: Lang; organisation: string; orgSlug: string; logoUrl: string | null; more: Card[]; state: string; preview: boolean; startsAt: string; caption: string | null; hashtags: string | null; thankYou: string | null; ctaUrl: string | null; outputs: number; templates: Tpl[] };
+  type Pic = { bitmap: ImageBitmap; w: number; h: number; tf: Transform; file: File };
+  type C = { title: string; description: string | null; language: Lang; organisation: string; orgSlug: string; logoUrl: string | null; more: Card[]; state: string; preview: boolean; startsAt: string; caption: string | null; hashtags: string | null; thankYou: string | null; ctaUrl: string | null; outputs: number; saveMode: string; templates: Tpl[] };
 
   const code = page.params.code!;
   const preview = page.url.searchParams.get('preview') === '1';
@@ -42,6 +42,10 @@
   let siteKey = $state<string | null>(null);
   let botToken = $state('');
   let botReset = $state(0);
+  let consent = $state(false);
+  let drive = $state<'' | 'saving' | 'saved' | 'failed'>('');
+  const savesRaw = $derived(c?.saveMode === 'raw' || c?.saveMode === 'both');
+  const savesFramed = $derived(c?.saveMode === 'framed' || c?.saveMode === 'both');
 
   const t = (k: Key) => dict[lang][k];
   const tpl = $derived(c?.templates.find((x) => x.id === tplId) ?? null);
@@ -121,7 +125,7 @@
       for (let j = 0; j < Math.min(files.length, targets.length); j++) {
         const d = await decodePhoto(files[j]);
         pics[targets[j]]?.bitmap.close();
-        pics[targets[j]] = { ...d, tf: { ...IDENTITY } };
+        pics[targets[j]] = { ...d, tf: { ...IDENTITY }, file: files[j] };
         track('pick', { type: 'photo' });
       }
       const nextEmpty = Array.from({ length: nWin }, (_, i) => i).find((i) => !pics[i]);
@@ -174,6 +178,7 @@
   async function create() {
     if (!tpl || !validate()) return;
     if (!allFilled) { error = t('needAll'); return; }
+    if (savesRaw && !consent) { error = t('needConsent'); return; }
     if (siteKey && !botToken) { error = t('error'); return; }
     busy = true; error = '';
     try {
@@ -185,7 +190,7 @@
       render(off.getContext('2d')!, { width: tpl.width, height: tpl.height, frame: img, windows: tpl.photoWindows, photos: photosFor(tpl), slots: slotsFor(tpl), values: v }, 1);
       const blob = await new Promise<Blob>((res, rej) => off.toBlob((b) => (b ? res(b) : rej(new Error('encode'))), 'image/jpeg', 0.92));
       const slotValues = Object.fromEntries(tpl.slots.filter((s) => s.inputType !== 'fixed').map((s) => [s.id, (values[s.id] ?? '').trim()]));
-      const r = await api<{ serial?: number; error?: string }>(`/c/${code}/outputs${q}`, { method: 'POST', body: JSON.stringify({ templateId: tpl.id, visitorId: visitor, slotValues, turnstileToken: botToken || undefined }) });
+      const r = await api<{ id?: string; serial?: number; error?: string }>(`/c/${code}/outputs${q}`, { method: 'POST', body: JSON.stringify({ templateId: tpl.id, visitorId: visitor, slotValues, turnstileToken: botToken || undefined }) });
       botReset++;
       if (!r.ok) {
         if (r.data.error === 'bad_template') await refresh(); // the organiser just changed the frame
@@ -194,6 +199,7 @@
       }
       try { localStorage.setItem(`inframe_vals_${code}`, JSON.stringify(values)); } catch { /* ignore */ }
       result = { blob, url: URL.createObjectURL(blob), serial: r.data.serial ?? 0 };
+      if (r.data.id && r.data.id !== 'preview') void saveToDrive(r.data.id, blob);
       if (c) c.outputs += preview ? 0 : 1;
       track('create');
       step = 'done';
@@ -201,9 +207,38 @@
     } catch { error = t('error'); track('error', { step: 'create' }); } finally { busy = false; }
   }
 
+  // ---- save a copy to the organiser's Drive (in the background; the participant never waits for it) ----
+  async function putToDrive(outputId: string, kind: 'raw' | 'framed', file: Blob, mime: string) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const slot = await api<{ uploadUrl?: string }>(`/c/${code}/outputs/${outputId}/upload`, { method: 'POST', body: JSON.stringify({ visitorId: visitor, kind, mime, size: file.size }) });
+        if (!slot.ok || !slot.data.uploadUrl) return false; // not allowed or Drive unavailable: no point retrying
+        const up = await fetch(slot.data.uploadUrl, { method: 'PUT', headers: { 'content-type': mime }, body: file });
+        const { id } = (await up.json()) as { id?: string };
+        if (!up.ok || !id) throw new Error('put');
+        const done = await api(`/c/${code}/outputs/${outputId}/uploaded`, { method: 'POST', body: JSON.stringify({ visitorId: visitor, kind, fileId: id }) });
+        return done.ok;
+      } catch { await new Promise((r) => setTimeout(r, 1500 * (attempt + 1))); }
+    }
+    return false;
+  }
+  async function saveToDrive(outputId: string, framed: Blob) {
+    if (!c || c.saveMode === 'off') return;
+    drive = 'saving';
+    const jobs: Promise<boolean>[] = [];
+    if (savesRaw) for (const p of pics.slice(0, nWin)) if (p) jobs.push(putToDrive(outputId, 'raw', p.file, /^image\/[a-z0-9.+-]+$/i.test(p.file.type) ? p.file.type : 'image/jpeg'));
+    if (savesFramed) jobs.push(putToDrive(outputId, 'framed', framed, 'image/jpeg'));
+    const res = await Promise.all(jobs);
+    drive = res.every(Boolean) ? 'saved' : 'failed';
+    if (drive === 'failed') track('error', { step: 'drive' });
+  }
+
   // ---- share ----
   const fileName = () => `${code}-${result?.serial || 'frame'}.jpg`;
-  const caption = $derived([c?.caption, c?.hashtags].filter(Boolean).join('\n\n'));
+  /** The campaign's own link, tagged so you can see in Results how many visits came from shares. */
+  const shareLink = $derived(typeof location !== 'undefined' ? `${location.origin}/c/${code}?r=share` : '');
+  /** What travels with the picture: caption, hashtags and the link that brings the next person in. */
+  const caption = $derived([c?.caption, c?.hashtags, shareLink].filter(Boolean).join('\n\n'));
   async function share() {
     if (!result) return;
     const file = new File([result.blob], fileName(), { type: 'image/jpeg' });
@@ -220,7 +255,7 @@
   async function copyText(text: string, which: 'caption' | 'link') {
     try { await navigator.clipboard.writeText(text); copied = which; setTimeout(() => (copied = ''), 2000); if (which === 'caption') track('caption_copy'); } catch { error = t('error'); }
   }
-  function again() { step = 'landing'; result = null; for (const p of pics) p?.bitmap.close(); pics = []; sel = 0; ver++; }
+  function again() { step = 'landing'; result = null; drive = ''; consent = false; for (const p of pics) p?.bitmap.close(); pics = []; sel = 0; ver++; }
 
   const link = $derived(c?.ctaUrl || (typeof location !== 'undefined' ? `${location.origin}/c/${code}` : ''));
   const missingRequired = (id: string) => touched && fields.find((f) => f.id === id)?.required && !(values[id] ?? '').trim();
@@ -264,6 +299,7 @@
             <button class="btn big" onclick={share}>{t('share')}</button>
             <button class="btn ghost big" onclick={download}>{t('download')}</button>
           </div>
+          {#if drive}<p class="privacy" role="status" style="margin:0 0 12px">{drive === 'saving' ? t('savingDrive') : drive === 'saved' ? t('savedDrive') : t('saveFailed')}</p>{/if}
           {#if caption}<button class="btn ghost block" onclick={() => copyText(caption, 'caption')}>{copied === 'caption' ? t('copied') : t('copyCaption')}</button>{/if}
           <section class="thanks">
             <h2>{t('thanks')}</h2>
@@ -347,6 +383,11 @@
                 {#if missingRequired(s.id)}<span class="error">{t('required')}</span>{/if}
               </label>
             {/each}
+            {#if savesRaw}
+              <label class="consent"><input type="checkbox" bind:checked={consent} /> <span>{t('consentRaw')}</span></label>
+            {:else if savesFramed}
+              <p class="privacy" style="margin:0 0 12px">{t('noticeFramed')}</p>
+            {/if}
             <Turnstile {siteKey} bind:token={botToken} reset={botReset} />
             {#if error}<p class="error" role="alert">{error}</p>{/if}
             <button class="btn big block" disabled={busy || (!!siteKey && !botToken)}>{busy ? t('creating') : t('create')}</button>
@@ -390,6 +431,8 @@
   .btn.big { min-height: 56px; font-size: 1.05rem; }
   .pick { cursor: pointer; }
   .privacy, .tip { text-align: center; font-size: .85rem; color: var(--muted); margin-top: 12px; }
+  .consent { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 14px; font-size: .92rem; cursor: pointer; }
+  .consent input { margin: 3px 0 0; width: 22px; height: 22px; min-height: 0; flex: none; }
   .wins { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin: 12px 0 0; }
   .wins button { min-height: 40px; }
   .wins button.on { background: var(--ink); color: #fff; border-color: var(--ink); }

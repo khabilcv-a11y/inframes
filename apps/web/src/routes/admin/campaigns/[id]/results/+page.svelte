@@ -4,7 +4,7 @@
   import { api } from '$lib/api';
 
   type M = { funnel: { visits: number; picked: number; created: number; shared: number; downloaded: number }; perDay: { day: string; count: number }[];
-    byTemplate: { name: string; count: number }[]; byDropdown: { label: string | null; rows: { name: string; count: number }[] }; errors: number };
+    byTemplate: { name: string; count: number }[]; byRef: { name: string; count: number }[]; byDropdown: { label: string | null; rows: { name: string; count: number }[] }; errors: number };
   const id = page.params.id;
   let m = $state<M | null>(null);
   onMount(async () => { const r = await api<M>(`/admin/campaigns/${id}/metrics`); if (r.ok) m = r.data; });
@@ -39,6 +39,14 @@
       {#each m.perDay as d}
         <div class="bar"><span>{d.day.slice(5)}</span><div class="track"><i style="width:{(d.count / maxDay) * 100}%"></i></div><b>{d.count}</b></div>
       {:else}<p class="empty">No frames yet.</p>{/each}
+    </section>
+
+    <section class="card">
+      <h2>Where visitors came from</h2>
+      {#each m.byRef as r}
+        <div class="bar"><span>{({ share: 'Shared by participants', link: 'Another website or app', direct: 'Opened directly / QR', qr: 'QR poster' } as Record<string, string>)[r.name] ?? r.name}</span><div class="track"><i style="width:{(r.count / (m.byRef[0]?.count || 1)) * 100}%"></i></div><b>{r.count}</b></div>
+      {:else}<p class="empty">No visits yet.</p>{/each}
+      <p class="muted"><small>"Shared by participants" counts people who arrived through the link shared with a picture.</small></p>
     </section>
 
     {#if m.byDropdown.label}

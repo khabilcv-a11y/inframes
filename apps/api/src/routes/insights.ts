@@ -46,6 +46,16 @@ insights.get('/admin/campaigns/:id/metrics', async (c) => {
     "SELECT s.id, s.label FROM text_slots s JOIN templates t ON t.id = s.template_id WHERE t.campaign_id = ? AND s.input_type = 'dropdown' ORDER BY s.sort_order"
   ).bind(r.id).all<{ id: string; label: string }>();
 
+  // where visitors came from: the ?r= tag in the link (share, qr…) or how they arrived
+  const { results: visits } = await c.env.DB.prepare("SELECT visitor_id, meta FROM events WHERE campaign_id = ? AND type = 'visit'").bind(r.id).all<{ visitor_id: string; meta: string | null }>();
+  const seen = new Map<string, Set<string>>();
+  for (const v of visits) {
+    const ref = String((JSON.parse(v.meta ?? '{}') as { ref?: string }).ref ?? 'direct');
+    if (!seen.has(ref)) seen.set(ref, new Set());
+    seen.get(ref)!.add(v.visitor_id);
+  }
+  const byRef = [...seen].map(([name, set]) => ({ name, count: set.size })).sort((a, b) => b.count - a.count);
+
   const byDay: Record<string, number> = {};
   const byTemplate: Record<string, number> = {};
   const byValue: Record<string, number> = {};
@@ -61,6 +71,7 @@ insights.get('/admin/campaigns/:id/metrics', async (c) => {
   const rank = (m: Record<string, number>) => Object.entries(m).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
   return c.json({
     funnel: { visits: people('visit'), picked: people('pick'), created: outs.length, shared: people('share'), downloaded: people('download') },
+    byRef,
     perDay: Object.entries(byDay).sort().map(([day, count]) => ({ day, count })),
     byTemplate: rank(byTemplate), byDropdown: { label: dd[0]?.label ?? null, rows: rank(byValue) },
     errors: ev.find((e) => e.type === 'error')?.n ?? 0

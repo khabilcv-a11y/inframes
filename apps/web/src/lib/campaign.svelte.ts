@@ -2,7 +2,7 @@ import { api } from './api';
 
 export type Campaign = {
   id: string; title: string; orgName: string; orgId: string; shortCode: string; state: string; startsAt: string; endsAt: string;
-  description: string | null; language: string; caption: string | null; hashtags: string | null; thankYou: string | null; ctaUrl: string | null;
+  description: string | null; language: string; caption: string | null; hashtags: string | null; thankYou: string | null; ctaUrl: string | null; saveMode?: string;
 };
 
 export const current = $state<{ c: Campaign | null; error: boolean }>({ c: null, error: false });

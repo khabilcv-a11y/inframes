@@ -64,6 +64,8 @@ export const updateAdminSchema = z.object({
 // ---- Campaigns ----
 export const CAMPAIGN_LANGUAGES = ['en', 'ml', 'hi'] as const;
 export const SHORT_CODE_RE = /^[a-z0-9]{4,12}$/;
+export const SAVE_MODES = ['off', 'raw', 'framed', 'both'] as const;
+export type SaveMode = (typeof SAVE_MODES)[number];
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 
 export const campaignFields = z.object({
@@ -78,6 +80,7 @@ export const campaignFields = z.object({
   thankYou: z.string().trim().max(500).optional(),
   ctaUrl: z.string().url().max(500).optional(),
   shortCode: z.string().regex(SHORT_CODE_RE).optional(),
+  saveMode: z.enum(SAVE_MODES).optional(),
   orgId: z.string().min(1).optional()
 });
 
@@ -178,3 +181,15 @@ export const eventsSchema = z.object({
 });
 
 export const MAX_ASSET_BYTES = 1_500_000;
+
+export const uploadRequestSchema = z.object({
+  visitorId: z.string().min(8).max(64),
+  kind: z.enum(['raw', 'framed']),
+  mime: z.string().regex(/^image\/[a-z0-9.+-]+$/i).max(40),
+  size: z.number().int().min(1).max(25_000_000)
+});
+export const uploadDoneSchema = z.object({
+  visitorId: z.string().min(8).max(64),
+  kind: z.enum(['raw', 'framed']),
+  fileId: z.string().min(5).max(200)
+});

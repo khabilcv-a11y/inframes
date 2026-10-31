@@ -9,6 +9,7 @@ import { turnstileOk } from '../lib/turnstile.ts';
 import { loadTemplates } from './templates.ts';
 import { SELECT, logoOf, type Row } from './campaigns.ts';
 import { slugify } from '../lib/slug.ts';
+import { driveConfigured } from '../lib/drive.ts';
 
 export const publicRoutes = new Hono<AppEnv>();
 
@@ -60,9 +61,16 @@ publicRoutes.get('/c/:code', async (c) => {
     title: r.title, description: r.description, language: r.language, organisation: r.org_name, orgSlug: slugify(r.org_name ?? ''), logoUrl: logoOf(r),
     state: preview ? 'live' : effectiveState(r), preview, startsAt: r.starts_at, endsAt: r.ends_at, caption: r.caption,
     hashtags: r.hashtags, thankYou: r.thank_you, ctaUrl: r.cta_url, outputs: n?.n ?? 0,
-    templates: await loadTemplates(c.env.DB, r.id), more: await moreFrom(c.env.DB, r)
+    saveMode: await effectiveSaveMode(c.env, r), templates: await loadTemplates(c.env.DB, r.id), more: await moreFrom(c.env.DB, r)
   });
 });
+
+/** The campaign's Drive setting, but 'off' unless Drive is configured and connected (so no consent line for nothing). */
+async function effectiveSaveMode(env: AppEnv['Bindings'], r: Row): Promise<string> {
+  const mode = r.save_mode ?? 'off';
+  if (mode === 'off' || !driveConfigured(env)) return 'off';
+  return (await env.DB.prepare('SELECT 1 AS ok FROM drive_connection WHERE id = 1').first()) ? mode : 'off';
+}
 
 async function moreFrom(db: D1Database, r: Row): Promise<Card[]> {
   const { results } = await db.prepare(`${SELECT} WHERE k.org_id = ? AND k.id != ? ORDER BY k.created_at DESC LIMIT 12`).bind(r.org_id, r.id).all<Row>();

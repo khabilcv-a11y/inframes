@@ -13,6 +13,7 @@ const en = {
   powered: 'Powered by InFrame', error: 'Something went wrong. Please try again.', noFrame: 'This campaign is not ready yet. Please check back soon.',
   yourFrame: 'Your frame is ready', tooMany: 'You have made many frames in the last hour. Please try again later.',
   addPhotos: 'Add your photos', collageHint: 'This frame has several photos:', photoN: 'Photo', needAll: 'Please add a photo for every spot in the frame.', addMore: 'Add the remaining photos',
+  consentRaw: 'I agree that my original photo is saved to the organiser’s Google Drive for this campaign.', noticeFramed: 'Your finished picture is saved to the organiser’s Google Drive.', needConsent: 'Please tick the box to continue.', savingDrive: 'Saving to the organiser’s Drive…', savedDrive: 'Saved to the organiser’s Drive ✓', saveFailed: 'Could not save a copy to the organiser’s Drive.',
   about: 'About this campaign', shareLink: 'Share this campaign', copyLink: 'Copy link', moreFrom: 'More campaigns from', credit: 'Designed & developed by'
 };
 const ml: typeof en = {
@@ -27,6 +28,7 @@ const ml: typeof en = {
   powered: 'Powered by InFrame', error: 'എന്തോ പിഴച്ചു. വീണ്ടും ശ്രമിക്കൂ.', noFrame: 'ഈ ക്യാമ്പയിൻ ഇതുവരെ തയ്യാറായിട്ടില്ല.',
   yourFrame: 'നിങ്ങളുടെ ഫ്രെയിം തയ്യാർ', tooMany: 'കഴിഞ്ഞ ഒരു മണിക്കൂറിൽ ഒരുപാട് ഫ്രെയിമുകൾ ഉണ്ടാക്കി. പിന്നീട് ശ്രമിക്കൂ.',
   addPhotos: 'നിങ്ങളുടെ ഫോട്ടോകൾ ചേർക്കൂ', collageHint: 'ഈ ഫ്രെയിമിൽ ഫോട്ടോകൾ:', photoN: 'ഫോട്ടോ', needAll: 'ഫ്രെയിമിലെ ഓരോ സ്ഥലത്തും ഫോട്ടോ ചേർക്കൂ.', addMore: 'ബാക്കി ഫോട്ടോകൾ ചേർക്കൂ',
+  consentRaw: 'എന്റെ ഒറിജിനൽ ഫോട്ടോ ഈ ക്യാമ്പയിനിനായി സംഘാടകരുടെ Google Drive-ൽ സേവ് ചെയ്യുന്നതിന് ഞാൻ സമ്മതിക്കുന്നു.', noticeFramed: 'നിങ്ങളുടെ പൂർത്തിയായ ചിത്രം സംഘാടകരുടെ Google Drive-ൽ സേവ് ചെയ്യും.', needConsent: 'തുടരാൻ ബോക്സ് ടിക്ക് ചെയ്യൂ.', savingDrive: 'Drive-ൽ സേവ് ചെയ്യുന്നു…', savedDrive: 'Drive-ൽ സേവ് ചെയ്തു ✓', saveFailed: 'Drive-ൽ കോപ്പി സേവ് ചെയ്യാൻ കഴിഞ്ഞില്ല.',
   about: 'ഈ ക്യാമ്പയിനെക്കുറിച്ച്', shareLink: 'ഈ ക്യാമ്പയിൻ പങ്കിടൂ', copyLink: 'ലിങ്ക് കോപ്പി ചെയ്യൂ', moreFrom: 'കൂടുതൽ ക്യാമ്പയിനുകൾ:', credit: 'രൂപകൽപ്പനയും വികസനവും'
 };
 const hi: typeof en = {
@@ -41,6 +43,7 @@ const hi: typeof en = {
   powered: 'Powered by InFrame', error: 'कुछ गड़बड़ हुई। फिर कोशिश करें।', noFrame: 'यह अभियान अभी तैयार नहीं है।',
   yourFrame: 'आपका फ़्रेम तैयार है', tooMany: 'पिछले एक घंटे में आपने बहुत फ़्रेम बनाए। बाद में कोशिश करें।',
   addPhotos: 'अपनी फ़ोटो जोड़ें', collageHint: 'इस फ़्रेम में फ़ोटो:', photoN: 'फ़ोटो', needAll: 'कृपया फ़्रेम की हर जगह के लिए फ़ोटो जोड़ें।', addMore: 'बाकी फ़ोटो जोड़ें',
+  consentRaw: 'मैं सहमत हूँ कि मेरी मूल फ़ोटो इस अभियान के लिए आयोजक के Google Drive में सेव की जाए।', noticeFramed: 'आपकी तैयार तस्वीर आयोजक के Google Drive में सेव होगी।', needConsent: 'जारी रखने के लिए बॉक्स पर टिक करें।', savingDrive: 'Drive में सेव हो रहा है…', savedDrive: 'Drive में सेव हो गया ✓', saveFailed: 'Drive में कॉपी सेव नहीं हो सकी।',
   about: 'इस अभियान के बारे में', shareLink: 'यह अभियान शेयर करें', copyLink: 'लिंक कॉपी करें', moreFrom: 'और अभियान:', credit: 'डिज़ाइन और विकास'
 };
 export const dict = { en, ml, hi };

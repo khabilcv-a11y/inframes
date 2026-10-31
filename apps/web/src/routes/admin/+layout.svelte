@@ -35,6 +35,7 @@
         ? [
             { href: '/admin/organisations', label: 'Organisations', icon: '⌂' },
             { href: '/admin/admins', label: 'Admins', icon: '☺' },
+            { href: '/admin/drive', label: 'Google Drive', icon: '☁' },
             { href: '/admin/activity', label: 'Activity log', icon: '☰' }
           ]
         : [])

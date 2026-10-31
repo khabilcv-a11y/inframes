@@ -1,6 +1,6 @@
 import type { Role } from '@inframe/shared';
 
-export interface Env {
+export interface Env extends DriveEnv {
   DB: D1Database;
   SESSION_SECRET: string;
   TURNSTILE_SECRET?: string;
@@ -24,3 +24,12 @@ export type AppEnv = {
   Bindings: Env;
   Variables: { user: UserRow };
 };
+
+export interface DriveEnv {
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  TOKEN_ENC_KEY?: string;
+  /** Test hooks: point Google endpoints at a fake server. */
+  GOOGLE_OAUTH_BASE?: string;
+  GOOGLE_API_BASE?: string;
+}
