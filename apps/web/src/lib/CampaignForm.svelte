@@ -63,7 +63,7 @@
       <option value="framed">Finished framed pictures only</option>
       <option value="both">Both</option>
     </select>
-    <span class="hint">Files go into a folder for this campaign, named from what people type (college, name). Saving original photos shows participants a consent tick box. Connect your Drive first under Google Drive in the menu.</span>
+    <span class="hint">Files go into a folder for this campaign, named from what people type (college, name). Saving original photos shows participants a clear notice at the Add photo button. Connect your Drive first under Google Drive in the menu.</span>
   </label>
 
   {#if error}<p class="error" role="alert">{error}</p>{/if}

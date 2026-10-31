@@ -42,7 +42,6 @@
   let siteKey = $state<string | null>(null);
   let botToken = $state('');
   let botReset = $state(0);
-  let consent = $state(false);
   let drive = $state<'' | 'saving' | 'saved' | 'failed'>('');
   const savesRaw = $derived(c?.saveMode === 'raw' || c?.saveMode === 'both');
   const savesFramed = $derived(c?.saveMode === 'framed' || c?.saveMode === 'both');
@@ -178,7 +177,6 @@
   async function create() {
     if (!tpl || !validate()) return;
     if (!allFilled) { error = t('needAll'); return; }
-    if (savesRaw && !consent) { error = t('needConsent'); return; }
     if (siteKey && !botToken) { error = t('error'); return; }
     busy = true; error = '';
     try {
@@ -260,7 +258,7 @@
   async function copyText(text: string, which: 'caption' | 'link') {
     try { await navigator.clipboard.writeText(text); copied = which; setTimeout(() => (copied = ''), 2000); if (which === 'caption') track('caption_copy'); } catch { error = t('error'); }
   }
-  function again() { step = 'landing'; result = null; drive = ''; consent = false; for (const p of pics) p?.bitmap.close(); pics = []; sel = 0; ver++; }
+  function again() { step = 'landing'; result = null; drive = ''; for (const p of pics) p?.bitmap.close(); pics = []; sel = 0; ver++; }
 
   const link = $derived(typeof location !== 'undefined' ? `${location.origin}/c/${code}` : '');
   /** The organiser's external link (social page, website, group…) gets a button named after where it goes. */
@@ -348,7 +346,7 @@
           <p class="count">{t('people')}: <strong>{c.outputs.toLocaleString('en-IN')}</strong></p>
           <label class="btn big block pick">{nWin > 1 ? t('addPhotos') : t('add')}<input type="file" accept="image/*" multiple={nWin > 1} onchange={(e) => onPick(e)} hidden /></label>
           {#if nWin > 1}<p class="privacy" style="margin-top:8px">{t('collageHint')} {nWin}</p>{/if}
-          <p class="privacy">{t('privacy')}</p>
+          <p class="privacy">{savesRaw ? t('consentRaw') : savesFramed ? t('noticeFramed') : t('privacy')}</p>
 
           {#if c.description}
             <section class="about"><h2>{t('about')}</h2><p>{c.description}</p></section>
@@ -396,11 +394,6 @@
                 {#if missingRequired(s.id)}<span class="error">{t('required')}</span>{/if}
               </label>
             {/each}
-            {#if savesRaw}
-              <label class="consent"><input type="checkbox" bind:checked={consent} /> <span>{t('consentRaw')}</span></label>
-            {:else if savesFramed}
-              <p class="privacy" style="margin:0 0 12px">{t('noticeFramed')}</p>
-            {/if}
             <Turnstile {siteKey} bind:token={botToken} reset={botReset} />
             {#if error}<p class="error" role="alert">{error}</p>{/if}
             <button class="btn big block" disabled={busy || (!!siteKey && !botToken)}>{busy ? t('creating') : t('create')}</button>
@@ -444,8 +437,6 @@
   .btn.big { min-height: 56px; font-size: 1.05rem; }
   .pick { cursor: pointer; }
   .privacy, .tip { text-align: center; font-size: .85rem; color: var(--muted); margin-top: 12px; }
-  .consent { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 14px; font-size: .92rem; cursor: pointer; }
-  .consent input { margin: 3px 0 0; width: 22px; height: 22px; min-height: 0; flex: none; }
   .wins { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin: 12px 0 0; }
   .wins button { min-height: 40px; }
   .wins button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
