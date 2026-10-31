@@ -4,7 +4,7 @@
   import { FONTS, MAX_ASSET_BYTES, matchOutputSize, type Rect, type SlotStyle } from '@inframe/shared';
   import { api } from '$lib/api';
   import { session } from '$lib/session.svelte';
-  import { detectWindow, ensureFonts, loadImage, render, type RenderSlot } from '$lib/compositor';
+  import { detectWhiteBoxes, detectWindow, ensureFonts, loadImage, render, type RenderSlot } from '$lib/compositor';
 
   type Slot = { key: string; label: string; inputType: 'text' | 'dropdown' | 'fixed'; options: string[]; fixedValue: string | null; required: boolean; box: Rect; style: SlotStyle; maxChars: number };
   type Tpl = { id: string; name: string; width: number; height: number; assetUrl: string; photoWindow: Rect; slots: (Omit<Slot, 'key'> & { id: string })[] };
@@ -26,6 +26,7 @@
   let canvas = $state<HTMLCanvasElement>();
   let frameImg: HTMLImageElement | null = null;
   let draw = $state<{ x: number; y: number; x2: number; y2: number } | null>(null);
+  let act: { mode: 'move' | 'resize'; key: string; sx: number; sy: number; box: Rect } | null = null;
   let optionsText = $state('');
   let n = 0;
 
@@ -140,8 +141,36 @@
     const p = pt(e, el);
     draw = { x: p.x, y: p.y, x2: p.x, y2: p.y };
   }
-  function move(e: PointerEvent) { if (draw) { const p = pt(e, e.currentTarget as HTMLElement); draw = { ...draw, x2: p.x, y2: p.y }; } }
+  function boxDown(e: PointerEvent, s: Slot, mode: 'move' | 'resize') {
+    e.stopPropagation();
+    selKey = s.key;
+    if (!canEdit) return;
+    const overlay = (e.currentTarget as HTMLElement).closest('.overlay') as HTMLElement;
+    overlay.setPointerCapture(e.pointerId);
+    const p = pt(e as unknown as PointerEvent, overlay);
+    act = { mode, key: s.key, sx: p.x, sy: p.y, box: { ...s.box } };
+  }
+  function move(e: PointerEvent) {
+    const el = e.currentTarget as HTMLElement;
+    if (act && sel) {
+      const s = slots.find((x) => x.key === act!.key);
+      if (!s) return;
+      const p = pt(e, el);
+      const dx = p.x - act.sx, dy = p.y - act.sy;
+      if (act.mode === 'move') {
+        s.box.x = Math.round(Math.max(0, Math.min(sel.width - act.box.w, act.box.x + dx)));
+        s.box.y = Math.round(Math.max(0, Math.min(sel.height - act.box.h, act.box.y + dy)));
+      } else {
+        s.box.w = Math.round(Math.max(40, Math.min(sel.width - act.box.x, act.box.w + dx)));
+        s.box.h = Math.round(Math.max(24, Math.min(sel.height - act.box.y, act.box.h + dy)));
+      }
+      dirty = true;
+      return;
+    }
+    if (draw) { const p = pt(e, el); draw = { ...draw, x2: p.x, y2: p.y }; }
+  }
   function up() {
+    if (act) { act = null; return; }
     if (!draw || !sel) return;
     const x = Math.min(draw.x, draw.x2), y = Math.min(draw.y, draw.y2), w = Math.abs(draw.x2 - draw.x), h = Math.abs(draw.y2 - draw.y);
     draw = null;
@@ -149,6 +178,28 @@
     const s: Slot = { key: `n${++n}`, label: 'Text', inputType: 'text', options: [], fixedValue: null, required: true, box: { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) }, style: defaultStyle(), maxChars: 40 };
     slots = [...slots, s]; selKey = s.key; dirty = true;
   }
+
+  const DARK = '#16161A';
+  let found = $state<string>('');
+  /** One click: find the white boxes the designer left for text and make a title box for each. */
+  function detectBoxes() {
+    if (!sel || !frameImg) return;
+    const boxes = detectWhiteBoxes(frameImg);
+    if (!boxes.length) { found = 'No white boxes found. Draw them by dragging on the preview.'; return; }
+    const names = ['Your college', 'Your village', 'Your name'];
+    const added = boxes.map((b, i): Slot => ({
+      key: `n${++n}`, label: names[i] ?? `Text ${i + 1}`, inputType: 'text', options: [], fixedValue: null, required: true, box: b,
+      style: { ...defaultStyle(), color: DARK, maxSize: Math.max(24, Math.min(80, Math.round(b.h * 0.6))), minSize: 16, weight: 600 }, maxChars: 60
+    }));
+    slots = [...slots, ...added]; selKey = added[0].key; dirty = true;
+    found = `Found ${boxes.length} white box${boxes.length > 1 ? 'es' : ''}. Click each one to name it and choose Free text or Dropdown.`;
+  }
+  const addBox = () => {
+    if (!sel) return;
+    const w = Math.round(sel.width * 0.6), h = 90;
+    const s: Slot = { key: `n${++n}`, label: 'Text', inputType: 'text', options: [], fixedValue: null, required: true, box: { x: Math.round((sel.width - w) / 2), y: Math.round(sel.height * 0.5), w, h }, style: defaultStyle(), maxChars: 40 };
+    slots = [...slots, s]; selKey = s.key; dirty = true;
+  };
 
   async function saveSlots() {
     if (!sel) return;
@@ -214,21 +265,29 @@
         <canvas bind:this={canvas} aria-label="Frame preview"></canvas>
         <div class="overlay" role="presentation" onpointerdown={down} onpointermove={move} onpointerup={up}>
           {#each slots as s (s.key)}
-            <button class="box" class:on={s.key === selKey} style={pct(s.box)} onpointerdown={(e) => e.stopPropagation()} onclick={() => (selKey = s.key)} aria-label={`Box: ${s.label}`}><span>{s.label}</span></button>
+            <div class="box" class:on={s.key === selKey} style={pct(s.box)} role="button" tabindex="0" aria-label={`Box: ${s.label}`}
+              onpointerdown={(e) => boxDown(e, s, 'move')} onkeydown={(e) => { if (e.key === 'Enter') selKey = s.key; }}>
+              <span>{s.label}</span>
+              {#if s.key === selKey && canEdit}<i class="handle" onpointerdown={(e) => boxDown(e, s, 'resize')}></i>{/if}
+            </div>
           {/each}
           {#if draw}<div class="box ghost" style={pct({ x: Math.min(draw.x, draw.x2), y: Math.min(draw.y, draw.y2), w: Math.abs(draw.x2 - draw.x), h: Math.abs(draw.y2 - draw.y) })}></div>{/if}
         </div>
       </div>
-      <p class="muted" style="margin:8px 0 0"><small>{canEdit ? 'Drag on the preview to draw a new title box. Click a box to edit it.' : 'View only.'}</small></p>
+      <p class="muted" style="margin:8px 0 0"><small>{canEdit ? 'Drag on an empty area to draw a box. Drag a box to move it; drag its corner dot to resize.' : 'View only.'}</small></p>
     </div>
 
     <div class="panel">
       {#if canEdit}
         <div class="card">
           <div class="row">
-            <button class="sm" onclick={() => addSlot('name')}>+ Name box</button>
+            <button class="sm btn" onclick={detectBoxes}>✨ Detect white boxes</button>
+            <button class="sm" onclick={addBox}>+ Add box</button>
+            <button class="sm" onclick={() => addSlot('name')}>+ Name</button>
             <button class="sm" onclick={() => addSlot('college')}>+ College dropdown</button>
-            <span class="spacer"></span>
+          </div>
+          {#if found}<p class="muted" style="margin:10px 0 0"><small>{found}</small></p>{/if}
+          <div class="row" style="margin-top:10px">
             <label class="sw"><input type="checkbox" bind:checked={stress} /> Test with a long name</label>
           </div>
         </div>
@@ -267,14 +326,21 @@
             <label class="field">Letters <select bind:value={selSlot.style.case} onchange={touch}><option value="as_typed">As typed</option><option value="title">Title Case</option><option value="upper">UPPER CASE</option></select></label>
             <label class="field">Spacing <input type="number" step="0.5" min="-5" max="20" bind:value={selSlot.style.tracking} oninput={touch} /></label>
           </div>
-          <details>
-            <summary>Exact position</summary>
-            <div class="two" style="margin-top:8px">
-              <label class="field">X <input type="number" bind:value={selSlot.box.x} oninput={touch} /></label>
-              <label class="field">Y <input type="number" bind:value={selSlot.box.y} oninput={touch} /></label>
-              <label class="field">Width <input type="number" bind:value={selSlot.box.w} oninput={touch} /></label>
-              <label class="field">Height <input type="number" bind:value={selSlot.box.h} oninput={touch} /></label>
-            </div>
+          <details open>
+            <summary>Position and size</summary>
+            <p class="muted" style="margin:0 0 8px"><small>Drag the box on the preview, or use the sliders. You can also type a value.</small></p>
+            {#each [
+              { k: 'x', label: 'Left', min: 0, max: Math.max(0, sel.width - selSlot.box.w) },
+              { k: 'y', label: 'Top', min: 0, max: Math.max(0, sel.height - selSlot.box.h) },
+              { k: 'w', label: 'Width', min: 40, max: Math.max(40, sel.width - selSlot.box.x) },
+              { k: 'h', label: 'Height', min: 24, max: Math.max(24, sel.height - selSlot.box.y) }
+            ] as f (f.k)}
+              <div class="sl">
+                <span>{f.label}</span>
+                <input type="range" min={f.min} max={f.max} step="1" bind:value={selSlot.box[f.k as 'x']} oninput={touch} aria-label={f.label} />
+                <input class="num" type="number" min={f.min} max={f.max} bind:value={selSlot.box[f.k as 'x']} oninput={touch} aria-label={`${f.label} value`} />
+              </div>
+            {/each}
           </details>
           <button class="btn danger sm" onclick={removeSlot}>Delete this box</button>
         </div>
@@ -317,11 +383,17 @@
   .overlay { position: absolute; inset: 0; cursor: crosshair; touch-action: none; }
   .box { position: absolute; display: flex; align-items: flex-start; border: 2px dashed var(--coral); background: rgb(232 85 61 / 12%); border-radius: 4px; padding: 0; min-height: 0; }
   .box span { position: absolute; left: -2px; top: -17px; background: var(--coral); color: #fff; font-size: 10px; line-height: 15px; padding: 0 5px; border-radius: 4px 4px 0 0; white-space: nowrap; }
+  .box { cursor: move; }
   .box.on { border-style: solid; background: rgb(232 85 61 / 20%); }
+  .handle { position: absolute; right: -8px; bottom: -8px; width: 18px; height: 18px; border-radius: 50%; background: var(--coral); border: 3px solid #fff; cursor: nwse-resize; box-shadow: 0 1px 4px rgb(0 0 0 / 35%); }
   .box.ghost { background: rgb(232 85 61 / 25%); pointer-events: none; }
   .panel { display: grid; gap: 16px; }
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
   .form .field { margin-bottom: 12px; }
   .sw { display: flex; align-items: center; gap: 8px; font-size: .9rem; }
   details summary { cursor: pointer; font-weight: 600; margin-bottom: 4px; }
+  .sl { display: grid; grid-template-columns: 56px 1fr 84px; gap: 10px; align-items: center; margin: 6px 0; font-size: .9rem; }
+  .sl input[type=range] { margin: 0; min-height: 0; padding: 0; accent-color: var(--coral); cursor: pointer; }
+  .sl .num { margin: 0; min-height: 40px; -moz-appearance: textfield; appearance: textfield; }
+  .sl .num::-webkit-outer-spin-button, .sl .num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 </style>

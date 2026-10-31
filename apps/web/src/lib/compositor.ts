@@ -162,3 +162,48 @@ export async function decodePhoto(file: Blob, maxSide = 4096): Promise<{ bitmap:
   }
   return { bitmap: bm, w: bm.width, h: bm.height };
 }
+
+/**
+ * Finds near-white, opaque, roughly rectangular areas in a frame design: the boxes a designer leaves
+ * for text. Works on a quarter-size copy for speed; returns rectangles in the frame's own pixels.
+ */
+export function detectWhiteBoxes(img: CanvasImageSource & { width: number; height: number }): Rect[] {
+  const S = 4;
+  const w = Math.max(1, Math.floor(img.width / S)), h = Math.max(1, Math.floor(img.height / S));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently: true })!;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, w, h);
+  const d = ctx.getImageData(0, 0, w, h).data;
+  const mask = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    const r = d[i * 4], g = d[i * 4 + 1], b = d[i * 4 + 2], a = d[i * 4 + 3];
+    mask[i] = a > 200 && Math.min(r, g, b) >= 214 && Math.max(r, g, b) - Math.min(r, g, b) <= 32 ? 1 : 0;
+  }
+  const seen = new Uint8Array(w * h);
+  const out: Rect[] = [];
+  const stack: number[] = [];
+  for (let start = 0; start < w * h; start++) {
+    if (!mask[start] || seen[start]) continue;
+    let minX = w, minY = h, maxX = 0, maxY = 0, n = 0;
+    stack.push(start); seen[start] = 1;
+    while (stack.length) {
+      const p = stack.pop()!;
+      const x = p % w, y = (p - x) / w;
+      n++; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
+      if (x > 0 && mask[p - 1] && !seen[p - 1]) { seen[p - 1] = 1; stack.push(p - 1); }
+      if (x < w - 1 && mask[p + 1] && !seen[p + 1]) { seen[p + 1] = 1; stack.push(p + 1); }
+      if (y > 0 && mask[p - w] && !seen[p - w]) { seen[p - w] = 1; stack.push(p - w); }
+      if (y < h - 1 && mask[p + w] && !seen[p + w]) { seen[p + w] = 1; stack.push(p + w); }
+    }
+    const bw = maxX - minX + 1, bh = maxY - minY + 1, area = bw * bh;
+    const fill = n / area;
+    if (area < 0.004 * w * h || area > 0.45 * w * h) continue; // too small (specks) or too big (background)
+    if (bw < 0.07 * w || bh < 0.025 * h) continue;             // too thin to hold text
+    if (fill < 0.78) continue;                                  // not rectangular enough
+    const pad = 2;
+    out.push({ x: (minX + pad) * S, y: (minY + pad) * S, w: Math.max(S, (bw - 2 * pad) * S), h: Math.max(S, (bh - 2 * pad) * S) });
+  }
+  // left to right within rows, rows top to bottom
+  return out.sort((a, b) => (Math.abs(a.y - b.y) < 40 ? a.x - b.x : a.y - b.y)).slice(0, 8);
+}
