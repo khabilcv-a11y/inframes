@@ -10,6 +10,17 @@
   let form = $state({ name: '', email: '', mobile: '', orgId: '', role: 'manager' });
   let error = $state('');
   let secret = $state<{ who: string; password: string } | null>(null);
+  let copied = $state(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(secret!.password);
+      copied = true;
+      setTimeout(() => (copied = false), 2000);
+    } catch {
+      alert('Copy failed. Select the password and copy it manually.');
+    }
+  }
 
   async function load() {
     const [a, o] = await Promise.all([
@@ -32,6 +43,7 @@
     });
     if (!r.ok) { error = r.data.error === 'email_taken' ? 'That email already has an account.' : 'Check the details and try again.'; return; }
     secret = { who: form.email, password: r.data.temporaryPassword! };
+    copied = false;
     form = { name: '', email: '', mobile: '', orgId: '', role: 'manager' };
     await load();
   }
@@ -39,7 +51,7 @@
   async function act(a: Admin, action: 'suspend' | 'reactivate' | 'reset_password') {
     if (action === 'reset_password' && !confirm(`Reset the password for ${a.email}?`)) return;
     const r = await api<{ temporaryPassword?: string }>(`/super/admins/${a.id}`, { method: 'PATCH', body: JSON.stringify({ action }) });
-    if (r.data.temporaryPassword) secret = { who: a.email, password: r.data.temporaryPassword };
+    if (r.data.temporaryPassword) { secret = { who: a.email, password: r.data.temporaryPassword }; copied = false; }
     await load();
   }
 </script>
@@ -54,6 +66,7 @@
       <strong>Temporary password for {secret.who}</strong>
       <p style="font: 20px monospace; margin:8px 0">{secret.password}</p>
       <p>Shown only once. Send it to them privately; they must change it at first sign-in.</p>
+      <button class="btn" onclick={copy}>{copied ? 'Copied ✓' : 'Copy password'}</button>
       <button onclick={() => (secret = null)}>Done</button>
     </div>
   {/if}
