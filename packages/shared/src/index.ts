@@ -143,15 +143,23 @@ export type SlotInput = z.infer<typeof slotSchema>;
 
 export const saveSlotsSchema = z.object({ slots: z.array(slotSchema).max(8) });
 
-export const templateMetaSchema = z.object({
-  name: z.string().trim().min(1).max(80),
-  width: z.coerce.number().int(),
-  height: z.coerce.number().int(),
-  photoWindow: rect
-});
+export const MAX_PHOTO_WINDOWS = 6;
+const windows = z.array(rect).min(1).max(MAX_PHOTO_WINDOWS);
+
+/** A frame has one photo area, or several for a collage. `photoWindow` (single) is still accepted. */
+export const templateMetaSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    width: z.coerce.number().int(),
+    height: z.coerce.number().int(),
+    photoWindows: windows.optional(),
+    photoWindow: rect.optional()
+  })
+  .refine((v) => v.photoWindows || v.photoWindow, { message: 'photo area required', path: ['photoWindows'] });
 
 export const updateTemplateSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
+  photoWindows: windows.optional(),
   photoWindow: rect.optional(),
   sortOrder: z.number().int().min(0).max(50).optional()
 });

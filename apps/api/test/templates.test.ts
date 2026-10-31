@@ -128,7 +128,16 @@ test('participant flow: live page, register frame, events, metrics, csv, rate li
 
   for (let i = 0; i < 20; i++) await req('/c/sed26/outputs', { method: 'POST', body: j({ templateId: tid, visitorId: visitor, slotValues: {} }) });
   assert.equal((await req('/c/sed26/outputs', { method: 'POST', body: j({ templateId: tid, visitorId: visitor, slotValues: {} }) })).status, 429);
-  assert.equal((await req(`/admin/templates/${tid}`, { method: 'DELETE' }, m1)).status, 409); // has outputs
+  // a frame people already used can still be deleted: it leaves the campaign, their results stay
+  const del = await req(`/admin/templates/${tid}`, { method: 'DELETE' }, m1);
+  assert.equal(del.status, 200);
+  assert.equal(((await del.json()) as any).archived, true);
+  assert.equal(((await (await req(`/admin/campaigns/${campId}/templates`, {}, m1)).json()) as any).templates.length, 0);
+  assert.equal(((await (await req('/c/sed26')).json()) as any).templates.length, 0);
+  assert.equal((await req('/c/sed26/outputs', { method: 'POST', body: j({ templateId: tid, visitorId: 'visitor-new-0001', slotValues: {} }) })).status, 400);
+  const after = (await (await req(`/admin/campaigns/${campId}/metrics`, {}, m1)).json()) as any;
+  assert.ok(after.funnel.created >= 2); // history is kept
+  assert.match(await (await req(`/admin/campaigns/${campId}/export.csv`, {}, m1)).text(), /Asha Menon/);
 });
 
 test('bot check is dormant without a secret and enforced with one', async () => {
@@ -174,4 +183,20 @@ test('logos: upload, serve, fall back from campaign to organisation, reject bad 
   const m2 = await login('ravi@x.in');
   assert.equal((await req('/admin/organisations/O1/logo', { method: 'POST', body: form(logo) }, m2)).status, 404);
   assert.equal((await req(`/admin/campaigns/${campId}/logo`, { method: 'POST', body: form(logo) }, m2)).status, 404);
+});
+
+test('collage frames: several photo areas are stored, validated and served', async () => {
+  const { req, m1, campId } = await setup();
+  const wins = [{ x: 60, y: 60, w: 450, h: 450 }, { x: 570, y: 60, w: 450, h: 450 }, { x: 60, y: 570, w: 960, h: 300 }];
+  const ok = await upload(req, campId, m1, { photoWindows: j(wins) });
+  assert.equal(ok.status, 201);
+  const list = (await (await req(`/admin/campaigns/${campId}/templates`, {}, m1)).json()) as any;
+  assert.equal(list.templates[0].photoWindows.length, 3);
+  assert.deepEqual(list.templates[0].photoWindow, wins[0]); // first area stays available for older code
+  const outside = await upload(req, campId, m1, { photoWindows: j([...wins, { x: 1000, y: 0, w: 200, h: 100 }]) });
+  assert.equal(outside.status, 400);
+  assert.equal((await upload(req, campId, m1, { photoWindows: j(Array(7).fill(wins[0])) })).status, 400);
+  const id = list.templates[0].id;
+  assert.equal((await req(`/admin/templates/${id}`, { method: 'PATCH', body: j({ photoWindows: wins.slice(0, 2) }) }, m1)).status, 200);
+  assert.equal((((await (await req(`/admin/campaigns/${campId}/templates`, {}, m1)).json()) as any).templates[0].photoWindows.length), 2);
 });

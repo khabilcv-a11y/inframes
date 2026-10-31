@@ -10,7 +10,8 @@
   import { decodePhoto, ensureFonts, loadImage, render, IDENTITY, type RenderSlot, type Transform } from '$lib/compositor';
 
   type Slot = { id: string; label: string; inputType: 'text' | 'dropdown' | 'fixed'; options: string[]; fixedValue: string | null; required: boolean; box: Rect; style: SlotStyle; maxChars: number };
-  type Tpl = { id: string; name: string; width: number; height: number; assetUrl: string; photoWindow: Rect; slots: Slot[] };
+  type Tpl = { id: string; name: string; width: number; height: number; assetUrl: string; photoWindows: Rect[]; slots: Slot[] };
+  type Pic = { bitmap: ImageBitmap; w: number; h: number; tf: Transform };
   type C = { title: string; description: string | null; language: Lang; organisation: string; orgSlug: string; logoUrl: string | null; more: Card[]; state: string; preview: boolean; startsAt: string; caption: string | null; hashtags: string | null; thankYou: string | null; ctaUrl: string | null; outputs: number; templates: Tpl[] };
 
   const code = page.params.code!;
@@ -30,9 +31,11 @@
   let result = $state<{ blob: Blob; url: string; serial: number } | null>(null);
   let copied = $state<'' | 'caption' | 'link'>('');
   let canvas = $state<HTMLCanvasElement>();
-  let photo: { bitmap: ImageBitmap; w: number; h: number } | null = null;
+  // One photo per photo area (a normal frame has one, a collage several). Plain array + a counter to refresh the screen.
+  let pics: (Pic | null)[] = [];
+  let ver = $state(0);
+  let sel = $state(0);
   let frameImgs: Record<string, HTMLImageElement> = {};
-  let tf: Transform = { ...IDENTITY };
   let raf = 0;
   let visitor = '';
   let siteKey = $state<string | null>(null);
@@ -42,6 +45,9 @@
   const t = (k: Key) => dict[lang][k];
   const tpl = $derived(c?.templates.find((x) => x.id === tplId) ?? null);
   const fields = $derived(tpl?.slots.filter((s) => s.inputType !== 'fixed') ?? []);
+  const nWin = $derived(tpl?.photoWindows.length ?? 1);
+  const filled = $derived.by(() => { void ver; return Array.from({ length: nWin }, (_, i) => !!pics[i]); });
+  const allFilled = $derived(filled.every(Boolean));
 
   function vid() {
     try { let v = localStorage.getItem('inframe_vid'); if (!v) { v = crypto.randomUUID(); localStorage.setItem('inframe_vid', v); } return v; } catch { return crypto.randomUUID(); }
@@ -84,6 +90,7 @@
     for (const s of tp.slots) v[s.id] = s.inputType === 'fixed' ? s.fixedValue ?? '' : (values[s.id] ?? '') || (step === 'landing' ? s.label : '');
     return v;
   }
+  const photosFor = (tp: Tpl) => tp.photoWindows.map((_, i) => (pics[i] ? { source: pics[i]!.bitmap, w: pics[i]!.w, h: pics[i]!.h, tf: pics[i]!.tf } : null));
   async function draw() {
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(async () => {
@@ -94,24 +101,32 @@
       await ensureFonts(slotsFor(tpl), v);
       const k = Math.min(1, 720 / tpl.width);
       canvas.width = Math.round(tpl.width * k); canvas.height = Math.round(tpl.height * k);
-      render(canvas.getContext('2d')!, { width: tpl.width, height: tpl.height, frame: img, photo: photo?.bitmap ?? null, photoSize: photo ? { w: photo.w, h: photo.h } : undefined, window: tpl.photoWindow, transform: tf, slots: slotsFor(tpl), values: v }, k);
+      render(canvas.getContext('2d')!, { width: tpl.width, height: tpl.height, frame: img, windows: tpl.photoWindows, photos: photosFor(tpl), highlight: step === 'edit' ? sel : null, slots: slotsFor(tpl), values: v }, k);
     });
   }
-  $effect(() => { JSON.stringify(values); tplId; step; draw(); });
+  $effect(() => { JSON.stringify(values); tplId; step; sel; ver; draw(); });
 
   // ---- photo ----
-  async function onPick(e: Event) {
+  /** `replace` swaps the selected area's photo; otherwise the chosen photos fill the empty areas in order. */
+  async function onPick(e: Event, replace = false) {
     const input = e.currentTarget as HTMLInputElement;
-    const f = input.files?.[0];
+    const files = Array.from(input.files ?? []);
     input.value = '';
-    if (!f) return;
+    if (!files.length || !tpl) return;
     error = '';
     try {
-      photo?.bitmap.close();
-      photo = await decodePhoto(f);
-      tf = { ...IDENTITY };
+      const targets = replace ? [sel] : Array.from({ length: nWin }, (_, i) => i).filter((i) => !pics[i]);
+      if (!targets.length) targets.push(sel);
+      for (let j = 0; j < Math.min(files.length, targets.length); j++) {
+        const d = await decodePhoto(files[j]);
+        pics[targets[j]]?.bitmap.close();
+        pics[targets[j]] = { ...d, tf: { ...IDENTITY } };
+        track('pick', { type: 'photo' });
+      }
+      const nextEmpty = Array.from({ length: nWin }, (_, i) => i).find((i) => !pics[i]);
+      sel = nextEmpty ?? (replace ? sel : 0);
+      ver++;
       step = 'edit';
-      track('pick', { type: 'photo' });
       await tick();
       draw();
     } catch { error = t('error'); }
@@ -122,21 +137,33 @@
   let last: { d: number; a: number } | null = null;
   const dist = () => { const [a, b] = [...pts.values()]; return { d: Math.hypot(a.x - b.x, a.y - b.y), a: Math.atan2(b.y - a.y, b.x - a.x) }; };
   const clamp = (s: number) => Math.min(8, Math.max(1, s));
-  function pdown(e: PointerEvent) { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (pts.size === 2) last = dist(); }
-  function pmove(e: PointerEvent) {
-    const p = pts.get(e.pointerId);
-    if (!p || !tpl || !canvas) return;
-    const k = tpl.width / canvas.getBoundingClientRect().width;
-    if (pts.size === 1) { tf.x += (e.clientX - p.x) * k; tf.y += (e.clientY - p.y) * k; }
+  const cur = () => pics[sel] ?? null;
+  function pdown(e: PointerEvent) {
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (pts.size === 0 && tpl && canvas && nWin > 1) {
+      // touching a photo area selects it, so each photo can be adjusted on its own
+      const r = canvas.getBoundingClientRect();
+      const x = ((e.clientX - r.left) / r.width) * tpl.width, y = ((e.clientY - r.top) / r.height) * tpl.height;
+      const hit = tpl.photoWindows.findIndex((w) => x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h);
+      if (hit >= 0 && hit !== sel) { sel = hit; }
+    }
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pts.size === 2 && last) { const n = dist(); tf.scale = clamp(tf.scale * (n.d / last.d)); tf.rot += n.a - last.a; last = n; }
+    if (pts.size === 2) last = dist();
+  }
+  function pmove(e: PointerEvent) {
+    const p = pts.get(e.pointerId), pic = cur();
+    if (!p || !pic || !tpl || !canvas) return;
+    const k = tpl.width / canvas.getBoundingClientRect().width;
+    if (pts.size === 1) { pic.tf.x += (e.clientX - p.x) * k; pic.tf.y += (e.clientY - p.y) * k; }
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2 && last) { const n = dist(); pic.tf.scale = clamp(pic.tf.scale * (n.d / last.d)); pic.tf.rot += n.a - last.a; last = n; }
     draw();
   }
   function pup(e: PointerEvent) { pts.delete(e.pointerId); last = null; }
-  function wheel(e: WheelEvent) { e.preventDefault(); tf.scale = clamp(tf.scale * (e.deltaY < 0 ? 1.06 : 0.94)); draw(); }
-  const zoom = (f: number) => { tf.scale = clamp(tf.scale * f); draw(); };
-  const rotate = () => { tf.rot += Math.PI / 12; draw(); };
-  const nudge = (dx: number, dy: number) => { tf.x += dx; tf.y += dy; draw(); };
+  function wheel(e: WheelEvent) { const pic = cur(); if (!pic) return; e.preventDefault(); pic.tf.scale = clamp(pic.tf.scale * (e.deltaY < 0 ? 1.06 : 0.94)); draw(); }
+  const zoom = (f: number) => { const pic = cur(); if (pic) { pic.tf.scale = clamp(pic.tf.scale * f); draw(); } };
+  const rotate = () => { const pic = cur(); if (pic) { pic.tf.rot += Math.PI / 12; draw(); } };
+  const nudge = (dx: number, dy: number) => { const pic = cur(); if (pic) { pic.tf.x += dx; pic.tf.y += dy; draw(); } };
 
   // ---- create ----
   function validate(): boolean {
@@ -144,7 +171,8 @@
     return fields.every((s) => !s.required || (values[s.id] ?? '').trim());
   }
   async function create() {
-    if (!tpl || !photo || !validate()) return;
+    if (!tpl || !validate()) return;
+    if (!allFilled) { error = t('needAll'); return; }
     if (siteKey && !botToken) { error = t('error'); return; }
     busy = true; error = '';
     try {
@@ -153,7 +181,7 @@
       await ensureFonts(slotsFor(tpl), v);
       const off = document.createElement('canvas');
       off.width = tpl.width; off.height = tpl.height;
-      render(off.getContext('2d')!, { width: tpl.width, height: tpl.height, frame: img, photo: photo.bitmap, photoSize: { w: photo.w, h: photo.h }, window: tpl.photoWindow, transform: tf, slots: slotsFor(tpl), values: v }, 1);
+      render(off.getContext('2d')!, { width: tpl.width, height: tpl.height, frame: img, windows: tpl.photoWindows, photos: photosFor(tpl), slots: slotsFor(tpl), values: v }, 1);
       const blob = await new Promise<Blob>((res, rej) => off.toBlob((b) => (b ? res(b) : rej(new Error('encode'))), 'image/jpeg', 0.92));
       const slotValues = Object.fromEntries(tpl.slots.filter((s) => s.inputType !== 'fixed').map((s) => [s.id, (values[s.id] ?? '').trim()]));
       const r = await api<{ serial?: number; error?: string }>(`/c/${code}/outputs${q}`, { method: 'POST', body: JSON.stringify({ templateId: tpl.id, visitorId: visitor, slotValues, turnstileToken: botToken || undefined }) });
@@ -191,7 +219,7 @@
   async function copyText(text: string, which: 'caption' | 'link') {
     try { await navigator.clipboard.writeText(text); copied = which; setTimeout(() => (copied = ''), 2000); if (which === 'caption') track('caption_copy'); } catch { error = t('error'); }
   }
-  function again() { step = 'landing'; result = null; photo?.bitmap.close(); photo = null; tf = { ...IDENTITY }; }
+  function again() { step = 'landing'; result = null; for (const p of pics) p?.bitmap.close(); pics = []; sel = 0; ver++; }
 
   const link = $derived(c?.ctaUrl || (typeof location !== 'undefined' ? `${location.origin}/c/${code}` : ''));
   const missingRequired = (id: string) => touched && fields.find((f) => f.id === id)?.required && !(values[id] ?? '').trim();
@@ -252,7 +280,7 @@
         {#if c.templates.length > 1}
           <div class="strip" role="radiogroup" aria-label="Frames">
             {#each c.templates as tp}
-              <button role="radio" aria-checked={tp.id === tplId} class:on={tp.id === tplId} onclick={() => { tplId = tp.id; tf = { ...IDENTITY }; }}><img src={tp.assetUrl} alt={tp.name} /></button>
+              <button role="radio" aria-checked={tp.id === tplId} class:on={tp.id === tplId} onclick={() => { tplId = tp.id; sel = 0; }}><img src={tp.assetUrl} alt={tp.name} /></button>
             {/each}
           </div>
         {/if}
@@ -267,7 +295,8 @@
 
         {#if step === 'landing'}
           <p class="count">{t('people')}: <strong>{c.outputs.toLocaleString('en-IN')}</strong></p>
-          <label class="btn big block pick">{t('add')}<input type="file" accept="image/*" onchange={onPick} hidden /></label>
+          <label class="btn big block pick">{nWin > 1 ? t('addPhotos') : t('add')}<input type="file" accept="image/*" multiple={nWin > 1} onchange={(e) => onPick(e)} hidden /></label>
+          {#if nWin > 1}<p class="privacy" style="margin-top:8px">{t('collageHint')} {nWin}</p>{/if}
           <p class="privacy">{t('privacy')}</p>
 
           {#if c.description}
@@ -287,6 +316,13 @@
             </section>
           {/if}
         {:else}
+          {#if nWin > 1}
+            <div class="wins" role="group" aria-label="Photos">
+              {#each filled as ok, i}
+                <button class:on={i === sel} class:ok onclick={() => (sel = i)}>{t('photoN')} {i + 1}{ok ? ' ✓' : ''}</button>
+              {/each}
+            </div>
+          {/if}
           <p class="muted tip">{t('hint')}</p>
           <div class="tools" role="group" aria-label="Adjust photo">
             <button onclick={() => zoom(0.9)} aria-label={t('zoomOut')}>−</button>
@@ -312,7 +348,8 @@
             <Turnstile {siteKey} bind:token={botToken} reset={botReset} />
             {#if error}<p class="error" role="alert">{error}</p>{/if}
             <button class="btn big block" disabled={busy || (!!siteKey && !botToken)}>{busy ? t('creating') : t('create')}</button>
-            <label class="link center-link">{t('change')}<input type="file" accept="image/*" onchange={onPick} hidden /></label>
+            <label class="link center-link">{t('change')}<input type="file" accept="image/*" onchange={(e) => onPick(e, true)} hidden /></label>
+            {#if nWin > 1 && !allFilled}<label class="link center-link">{t('addMore')}<input type="file" accept="image/*" multiple onchange={(e) => onPick(e)} hidden /></label>{/if}
           </form>
         {/if}
         {#if error && step === 'landing'}<p class="error" role="alert">{error}</p>{/if}
@@ -350,6 +387,10 @@
   .btn.big { min-height: 56px; font-size: 1.05rem; }
   .pick { cursor: pointer; }
   .privacy, .tip { text-align: center; font-size: .85rem; color: var(--muted); margin-top: 12px; }
+  .wins { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin: 12px 0 0; }
+  .wins button { min-height: 40px; }
+  .wins button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .wins button.ok:not(.on) { border-color: var(--ok); color: var(--ok); }
   .tools { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 8px 0 16px; }
   .tools button { min-width: 48px; min-height: 48px; padding: 0; font-size: 1.2rem; }
   .field select, .field input { min-height: 52px; font-size: 1rem; }

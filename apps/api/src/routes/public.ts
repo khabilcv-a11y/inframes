@@ -25,7 +25,7 @@ async function cardsFor(db: D1Database, rows: Row[]): Promise<Card[]> {
   const ids = rows.map((r) => r.id);
   const ph = ids.map(() => '?').join(',');
   const { results: counts } = await db.prepare(`SELECT campaign_id AS id, COUNT(*) AS n FROM outputs WHERE campaign_id IN (${ph}) GROUP BY campaign_id`).bind(...ids).all<{ id: string; n: number }>();
-  const { results: covers } = await db.prepare(`SELECT campaign_id AS id, asset_id FROM templates WHERE campaign_id IN (${ph}) ORDER BY sort_order DESC, id DESC`).bind(...ids).all<{ id: string; asset_id: string }>();
+  const { results: covers } = await db.prepare(`SELECT campaign_id AS id, asset_id FROM templates WHERE campaign_id IN (${ph}) AND kind != 'archived' ORDER BY sort_order DESC, id DESC`).bind(...ids).all<{ id: string; asset_id: string }>();
   const n = new Map(counts.map((c) => [c.id, c.n]));
   const cover = new Map(covers.map((c) => [c.id, `/api/assets/${c.asset_id}`])); // the first template wins (rows are ordered last-to-first)
   return rows.map((r) => ({
@@ -80,7 +80,7 @@ publicRoutes.post('/c/:code/outputs', async (c) => {
   if (effectiveState(r) !== 'live') return c.json({ error: 'not_live' }, 409);
   if (!(await turnstileOk(c.env.TURNSTILE_SECRET, p.data.turnstileToken, c.req.header('cf-connecting-ip') ?? null))) return c.json({ error: 'bot_check_failed' }, 400);
 
-  const t = await c.env.DB.prepare('SELECT id FROM templates WHERE id = ? AND campaign_id = ?').bind(p.data.templateId, r.id).first();
+  const t = await c.env.DB.prepare("SELECT id FROM templates WHERE id = ? AND campaign_id = ? AND kind != 'archived'").bind(p.data.templateId, r.id).first();
   if (!t) return c.json({ error: 'bad_template' }, 400);
   const since = new Date(Date.now() - 3600_000).toISOString();
   const recent = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM outputs WHERE campaign_id = ? AND visitor_id = ? AND created_at > ?')

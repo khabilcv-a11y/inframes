@@ -4,10 +4,10 @@
   import { FONTS, MAX_ASSET_BYTES, matchOutputSize, type Rect, type SlotStyle } from '@inframe/shared';
   import { api } from '$lib/api';
   import { session } from '$lib/session.svelte';
-  import { detectWhiteBoxes, detectWindow, ensureFonts, loadImage, render, type RenderSlot } from '$lib/compositor';
+  import { detectWhiteBoxes, detectWindows, ensureFonts, loadImage, render, type RenderSlot } from '$lib/compositor';
 
   type Slot = { key: string; label: string; inputType: 'text' | 'dropdown' | 'fixed'; options: string[]; fixedValue: string | null; required: boolean; box: Rect; style: SlotStyle; maxChars: number };
-  type Tpl = { id: string; name: string; width: number; height: number; assetUrl: string; photoWindow: Rect; slots: (Omit<Slot, 'key'> & { id: string })[] };
+  type Tpl = { id: string; name: string; width: number; height: number; assetUrl: string; photoWindows: Rect[]; slots: (Omit<Slot, 'key'> & { id: string })[] };
 
   const id = page.params.id!;
   const canEdit = $derived(session.user?.role !== 'viewer');
@@ -69,7 +69,7 @@
     const k = 540 / sel.width;
     canvas.width = Math.round(sel.width * k);
     canvas.height = Math.round(sel.height * k);
-    render(canvas.getContext('2d')!, { width: sel.width, height: sel.height, frame: frameImg, photo: null, window: sel.photoWindow, transform: { scale: 1, x: 0, y: 0, rot: 0 }, slots: rs, values }, k);
+    render(canvas.getContext('2d')!, { width: sel.width, height: sel.height, frame: frameImg, windows: sel.photoWindows, photos: [], slots: rs, values }, k);
   }
   $effect(() => { JSON.stringify(slots); stress; sel; redraw(); });
 
@@ -92,8 +92,8 @@
       const cx = c.getContext('2d')!;
       cx.imageSmoothingQuality = 'high';
       cx.drawImage(img, 0, 0, size.width, size.height);
-      const win = detectWindow(c);
-      if (!win) throw new Error('This frame has no transparent area, so there is nowhere for the photo to show. Cut a transparent window in your design and export again as PNG.');
+      const wins = detectWindows(c);
+      if (!wins.length) throw new Error('This frame has no transparent area, so there is nowhere for the photo to show. Cut a transparent window in your design and export again as PNG.');
       let blob: Blob | null = null;
       for (const [type, q] of [['image/webp', 0.92], ['image/webp', 0.8], ['image/webp', 0.65]] as const) {
         blob = await new Promise<Blob | null>((res) => c.toBlob(res, type, q));
@@ -106,11 +106,11 @@
       f.set('file', new File([blob], 'frame.webp', { type: blob.type }));
       f.set('name', file.name.replace(/\.[^.]+$/, '').slice(0, 60) || 'Frame');
       f.set('width', String(size.width)); f.set('height', String(size.height));
-      f.set('photoWindow', JSON.stringify(win));
+      f.set('photoWindows', JSON.stringify(wins));
       const res = await fetch(`/api/admin/campaigns/${id}/templates`, { method: 'POST', body: f, credentials: 'same-origin' });
       const data = (await res.json().catch(() => ({}))) as { id?: string; error?: string };
       if (!res.ok) throw new Error(data.error === 'file_too_large' ? 'File is too large.' : 'Upload failed. Try again.');
-      msg = 'Frame added. Now draw boxes for the name and college on the preview.';
+      msg = wins.length > 1 ? `Frame added with ${wins.length} photo areas (a collage). Now add the title boxes.` : 'Frame added. Now add the title boxes: click Detect white boxes, or drag on the preview.';
       await load(data.id);
     } catch (e) {
       err = e instanceof Error ? e.message : 'Could not read that image.';
@@ -213,9 +213,10 @@
   }
 
   async function removeTemplate() {
-    if (!sel || !confirm(`Delete frame "${sel.name}"?`)) return;
-    const r = await api<{ error?: string }>(`/admin/templates/${sel.id}`, { method: 'DELETE' });
-    if (!r.ok) { err = r.data.error === 'has_outputs' ? 'This frame has already been used, so it cannot be deleted.' : 'Could not delete.'; return; }
+    if (!sel || !confirm(`Delete frame "${sel.name}"?\n\nIt disappears from the campaign. Anyone who already made a picture with it keeps their result, and your numbers and CSV stay the same.`)) return;
+    const r = await api<{ archived?: boolean }>(`/admin/templates/${sel.id}`, { method: 'DELETE' });
+    if (!r.ok) { err = 'Could not delete. Try again.'; return; }
+    err = ''; msg = r.data.archived ? 'Frame removed. Earlier results are kept.' : 'Frame deleted.';
     selId = null;
     await load();
   }
@@ -223,9 +224,11 @@
   async function saveName() { if (sel) await api(`/admin/templates/${sel.id}`, { method: 'PATCH', body: JSON.stringify({ name: sel.name }) }); }
   async function saveWindow() {
     if (!sel) return;
-    const r = await api(`/admin/templates/${sel.id}`, { method: 'PATCH', body: JSON.stringify({ photoWindow: sel.photoWindow }) });
-    if (!r.ok) err = 'Photo window must stay inside the frame.'; else { msg = 'Photo window saved.'; err = ''; }
+    const r = await api(`/admin/templates/${sel.id}`, { method: 'PATCH', body: JSON.stringify({ photoWindows: sel.photoWindows }) });
+    if (!r.ok) err = 'Photo areas must stay inside the frame.'; else { msg = 'Photo areas saved.'; err = ''; }
   }
+  const addWindow = () => { if (sel && sel.photoWindows.length < 6) { sel.photoWindows = [...sel.photoWindows, { x: 60, y: 60, w: Math.round(sel.width / 3), h: Math.round(sel.width / 3) }]; } };
+  const removeWindow = (i: number) => { if (sel && sel.photoWindows.length > 1) sel.photoWindows = sel.photoWindows.filter((_, j) => j !== i); };
   const pct = (b: Rect) => sel ? `left:${(b.x / sel.width) * 100}%;top:${(b.y / sel.height) * 100}%;width:${(b.w / sel.width) * 100}%;height:${(b.h / sel.height) * 100}%` : '';
 </script>
 
@@ -355,14 +358,18 @@
           <details style="margin-top:16px">
             <summary>Frame settings</summary>
             <label class="field" style="margin-top:12px">Frame name <input bind:value={sel.name} onchange={saveName} /></label>
-            <p class="muted"><small>Photo area (found automatically)</small></p>
-            <div class="two">
-              <label class="field">X <input type="number" bind:value={sel.photoWindow.x} /></label>
-              <label class="field">Y <input type="number" bind:value={sel.photoWindow.y} /></label>
-              <label class="field">Width <input type="number" bind:value={sel.photoWindow.w} /></label>
-              <label class="field">Height <input type="number" bind:value={sel.photoWindow.h} /></label>
-            </div>
-            <div class="row"><button class="sm" onclick={saveWindow}>Save photo area</button><button class="sm btn danger" onclick={removeTemplate}>Delete frame</button></div>
+            <p class="muted" style="margin-bottom:4px"><small>Photo areas ({sel.photoWindows.length}). More than one makes a collage: the participant adds one photo per area.</small></p>
+            {#each sel.photoWindows as w, i}
+              <div class="win">
+                <strong>Area {i + 1}</strong>
+                {#each [['x', 'Left'], ['y', 'Top'], ['w', 'Width'], ['h', 'Height']] as [k, l]}
+                  <label>{l} <input type="number" bind:value={w[k as 'x']} /></label>
+                {/each}
+                {#if sel.photoWindows.length > 1}<button class="sm" onclick={() => removeWindow(i)} aria-label={`Remove area ${i + 1}`}>✕</button>{/if}
+              </div>
+            {/each}
+            <div class="row" style="margin:8px 0"><button class="sm" onclick={addWindow} disabled={sel.photoWindows.length >= 6}>+ Add photo area</button></div>
+            <div class="row"><button class="sm" onclick={saveWindow}>Save photo areas</button><button class="sm btn danger" onclick={removeTemplate}>Delete frame</button></div>
           </details>
         </div>
       {/if}
@@ -390,6 +397,8 @@
   .panel { display: grid; gap: 16px; }
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
   .form .field { margin-bottom: 12px; }
+  .win { display: grid; grid-template-columns: auto repeat(4, minmax(0, 1fr)) auto; gap: 6px; align-items: end; margin: 6px 0; font-size: .8rem; }
+  .win input { margin: 2px 0 0; min-height: 36px; padding: 4px 6px; }
   .sw { display: flex; align-items: center; gap: 8px; font-size: .9rem; }
   details summary { cursor: pointer; font-weight: 600; margin-bottom: 4px; }
   .sl { display: grid; grid-template-columns: 56px 1fr 84px; gap: 10px; align-items: center; margin: 6px 0; font-size: .9rem; }

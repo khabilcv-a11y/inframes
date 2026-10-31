@@ -18,15 +18,21 @@ export const presentSlot = (s: SlotRow) => ({
   required: !!s.required, box: JSON.parse(s.box), style: JSON.parse(s.style), maxChars: s.max_chars
 });
 
+/** Stored as one rect (older frames) or an array of rects (collage). Always returns an array. */
+export const parseWindows = (raw: string): { x: number; y: number; w: number; h: number }[] => {
+  const v = JSON.parse(raw);
+  return Array.isArray(v) ? v : [v];
+};
+
 export async function loadTemplates(db: D1Database, campaignId: string) {
-  const { results: ts } = await db.prepare('SELECT * FROM templates WHERE campaign_id = ? ORDER BY sort_order, id').bind(campaignId).all<TemplateRow>();
+  const { results: ts } = await db.prepare("SELECT * FROM templates WHERE campaign_id = ? AND kind != 'archived' ORDER BY sort_order, id").bind(campaignId).all<TemplateRow>();
   const { results: ss } = await db
-    .prepare('SELECT s.* FROM text_slots s JOIN templates t ON t.id = s.template_id WHERE t.campaign_id = ? ORDER BY s.sort_order')
+    .prepare("SELECT s.* FROM text_slots s JOIN templates t ON t.id = s.template_id WHERE t.campaign_id = ? AND t.kind != 'archived' ORDER BY s.sort_order")
     .bind(campaignId)
     .all<SlotRow>();
   return ts.map((t) => ({
     id: t.id, name: t.name, width: t.width, height: t.height, assetUrl: `/api/assets/${t.asset_id}`,
-    photoWindow: JSON.parse(t.photo_window), sortOrder: t.sort_order,
+    photoWindow: parseWindows(t.photo_window)[0], photoWindows: parseWindows(t.photo_window), sortOrder: t.sort_order,
     slots: ss.filter((s) => s.template_id === t.id).map(presentSlot)
   }));
 }
@@ -64,27 +70,30 @@ admin.post('/campaigns/:id/templates', requireRole('super_admin', 'manager'), as
   if (file.size > MAX_ASSET_BYTES) return c.json({ error: 'file_too_large', maxBytes: MAX_ASSET_BYTES }, 413);
 
   const meta = templateMetaSchema.safeParse({
-    name: form.get('name'), width: form.get('width'), height: form.get('height'), photoWindow: JSON.parse(String(form.get('photoWindow') ?? 'null'))
+    name: form.get('name'), width: form.get('width'), height: form.get('height'),
+    photoWindows: JSON.parse(String(form.get('photoWindows') ?? 'null')) ?? undefined,
+    photoWindow: JSON.parse(String(form.get('photoWindow') ?? 'null')) ?? undefined
   });
   if (!meta.success) return c.json({ error: 'invalid_input', issues: meta.error.issues }, 400);
   const m = meta.data;
   if (!OUTPUT_SIZES.some((s) => s.width === m.width && s.height === m.height)) return c.json({ error: 'bad_size' }, 400);
-  if (m.photoWindow.x + m.photoWindow.w > m.width || m.photoWindow.y + m.photoWindow.h > m.height) return c.json({ error: 'window_outside_frame' }, 400);
+  const wins = m.photoWindows ?? [m.photoWindow!];
+  if (wins.some((w) => w.x + w.w > m.width || w.y + w.h > m.height)) return c.json({ error: 'window_outside_frame' }, 400);
 
   const now = new Date().toISOString();
   const assetId = ulid();
   const id = ulid();
-  const count = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM templates WHERE campaign_id = ?').bind(camp.id).first<{ n: number }>();
+  const count = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM templates WHERE campaign_id = ? AND kind != 'archived'").bind(camp.id).first<{ n: number }>();
   await c.env.DB.prepare('INSERT INTO assets (id, campaign_id, content_type, bytes, data, created_at) VALUES (?,?,?,?,?,?)')
     .bind(assetId, camp.id, file.type, file.size, await file.arrayBuffer(), now).run();
   await c.env.DB.prepare('INSERT INTO templates (id, campaign_id, name, width, height, asset_id, photo_window, sort_order) VALUES (?,?,?,?,?,?,?,?)')
-    .bind(id, camp.id, m.name, m.width, m.height, assetId, JSON.stringify(m.photoWindow), count?.n ?? 0).run();
+    .bind(id, camp.id, m.name, m.width, m.height, assetId, JSON.stringify(wins), count?.n ?? 0).run();
   await audit(c, 'template.create', { type: 'template', id }, { campaign: camp.id, name: m.name });
   return c.json({ id }, 201);
 });
 
 async function ownedTemplate(c: Parameters<typeof ownedCampaign>[0], id: string) {
-  const t = await c.env.DB.prepare('SELECT * FROM templates WHERE id = ?').bind(id).first<TemplateRow>();
+  const t = await c.env.DB.prepare("SELECT * FROM templates WHERE id = ? AND kind != 'archived'").bind(id).first<TemplateRow>();
   return t && (await ownedCampaign(c, t.campaign_id)) ? t : null;
 }
 
@@ -93,8 +102,8 @@ admin.patch('/templates/:id', requireRole('super_admin', 'manager'), async (c) =
   if (!p.success) return c.json({ error: 'invalid_input' }, 400);
   const t = await ownedTemplate(c, c.req.param('id'));
   if (!t) return c.json({ error: 'not_found' }, 404);
-  const w = p.data.photoWindow;
-  if (w && (w.x + w.w > t.width || w.y + w.h > t.height)) return c.json({ error: 'window_outside_frame' }, 400);
+  const w = p.data.photoWindows ?? (p.data.photoWindow ? [p.data.photoWindow] : undefined);
+  if (w && w.some((r) => r.x + r.w > t.width || r.y + r.h > t.height)) return c.json({ error: 'window_outside_frame' }, 400);
   await c.env.DB.prepare('UPDATE templates SET name = COALESCE(?, name), photo_window = COALESCE(?, photo_window), sort_order = COALESCE(?, sort_order) WHERE id = ?')
     .bind(p.data.name ?? null, w ? JSON.stringify(w) : null, p.data.sortOrder ?? null, t.id).run();
   await audit(c, 'template.update', { type: 'template', id: t.id });
@@ -104,7 +113,13 @@ admin.patch('/templates/:id', requireRole('super_admin', 'manager'), async (c) =
 admin.delete('/templates/:id', requireRole('super_admin', 'manager'), async (c) => {
   const t = await ownedTemplate(c, c.req.param('id'));
   if (!t) return c.json({ error: 'not_found' }, 404);
-  if (await c.env.DB.prepare('SELECT id FROM outputs WHERE template_id = ? LIMIT 1').bind(t.id).first()) return c.json({ error: 'has_outputs' }, 409);
+  // A frame people already used is archived (kind = 'archived'): it disappears from the campaign but their
+  // results stay in the numbers and the CSV. An unused frame is removed completely.
+  if (await c.env.DB.prepare('SELECT id FROM outputs WHERE template_id = ? LIMIT 1').bind(t.id).first()) {
+    await c.env.DB.prepare("UPDATE templates SET kind = 'archived' WHERE id = ?").bind(t.id).run();
+    await audit(c, 'template.archive', { type: 'template', id: t.id });
+    return c.json({ ok: true, archived: true });
+  }
   await c.env.DB.prepare('DELETE FROM text_slots WHERE template_id = ?').bind(t.id).run();
   await c.env.DB.prepare('DELETE FROM templates WHERE id = ?').bind(t.id).run();
   await c.env.DB.prepare('DELETE FROM assets WHERE id = ?').bind(t.asset_id).run();
