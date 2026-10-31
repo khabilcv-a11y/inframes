@@ -1,0 +1,37 @@
+import { z } from 'zod';
+
+export const ROLES = ['super_admin', 'manager', 'viewer'] as const;
+export type Role = (typeof ROLES)[number];
+
+export const USER_STATUSES = ['invited', 'active', 'suspended'] as const;
+export type UserStatus = (typeof USER_STATUSES)[number];
+
+export const MIN_PASSWORD_LENGTH = 10;
+
+export const loginSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(254),
+  password: z.string().min(1).max(256),
+  turnstileToken: z.string().optional()
+});
+export type LoginInput = z.infer<typeof loginSchema>;
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1).max(256),
+    newPassword: z.string().min(MIN_PASSWORD_LENGTH).max(256)
+  })
+  .refine((v) => v.currentPassword !== v.newPassword, {
+    message: 'New password must differ from the current one',
+    path: ['newPassword']
+  });
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+
+/** What the API returns about the signed-in user. Never includes secrets. */
+export interface SessionUser {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  orgId: string | null;
+  mustChangePassword: boolean;
+}

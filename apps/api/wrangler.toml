@@ -1,0 +1,13 @@
+name = "inframe-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "inframe"
+database_id = "00000000-0000-0000-0000-000000000000"   # replace with the id from: wrangler d1 create inframe
+migrations_dir = "migrations"
+
+# Secrets (never commit): wrangler secret put SESSION_SECRET
+# Optional: wrangler secret put TURNSTILE_SECRET  (enables bot check on login)
+# Local dev: put them in apps/api/.dev.vars

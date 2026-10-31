@@ -1,0 +1,10 @@
+:root { --coral: #E8553D; --ink: #16161A; --warm: #FAFAF7; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 17px/1.5 Inter, system-ui, sans-serif; background: var(--warm); color: var(--ink); }
+h1, h2 { font-family: 'Space Grotesk', system-ui, sans-serif; letter-spacing: -0.02em; }
+button, input { font: inherit; min-height: 48px; }
+.btn { background: var(--coral); color: #fff; border: 0; border-radius: 10px; padding: 0 24px; cursor: pointer; }
+.btn:disabled { opacity: .6; }
+.field { display: block; margin-bottom: 16px; }
+.field input { width: 100%; padding: 0 12px; border: 1px solid #c9c9c4; border-radius: 8px; }
+.error { color: #b3261e; }
