@@ -60,3 +60,40 @@ export const updateAdminSchema = z.object({
   role: z.enum(['manager', 'viewer']).optional(),
   orgId: z.string().min(1).optional()
 });
+
+// ---- Campaigns ----
+export const CAMPAIGN_LANGUAGES = ['en', 'ml', 'hi'] as const;
+export const SHORT_CODE_RE = /^[a-z0-9]{4,12}$/;
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+
+export const campaignFields = z.object({
+  title: z.string().trim().min(2).max(120),
+  description: z.string().trim().max(500).optional(),
+  language: z.enum(CAMPAIGN_LANGUAGES).default('en'),
+  startsAt: z.string().datetime({ offset: true }),
+  endsAt: z.string().datetime({ offset: true }),
+  dailyWindow: z.object({ from: hhmm, to: hhmm }).nullable().optional(),
+  caption: z.string().trim().max(1000).optional(),
+  hashtags: z.string().trim().max(300).optional(),
+  thankYou: z.string().trim().max(500).optional(),
+  ctaUrl: z.string().url().max(500).optional(),
+  shortCode: z.string().regex(SHORT_CODE_RE).optional(),
+  orgId: z.string().min(1).optional()
+});
+
+const endsAfterStart = (v: { startsAt?: string; endsAt?: string }) =>
+  !v.startsAt || !v.endsAt || new Date(v.endsAt) > new Date(v.startsAt);
+
+export const createCampaignSchema = campaignFields.refine(endsAfterStart, {
+  message: 'End must be after start',
+  path: ['endsAt']
+});
+export const updateCampaignSchema = campaignFields.partial().refine(endsAfterStart, {
+  message: 'End must be after start',
+  path: ['endsAt']
+});
+export const campaignActionSchema = z.object({
+  action: z.enum(['publish', 'pause', 'resume', 'end', 'archive'])
+});
+
+export type CampaignState = 'draft' | 'scheduled' | 'live' | 'paused' | 'ended' | 'archived';

@@ -24,6 +24,7 @@
   {#if user}
     <h1>Hello, {user.name}</h1>
     <p>Signed in as {user.email} ({user.role.replace('_', ' ')}). Campaigns arrive next.</p>
+    <p><a href="/admin/campaigns">Campaigns</a></p>
     {#if user.role === 'super_admin'}
       <p><a href="/admin/organisations">Organisations</a> · <a href="/admin/admins">Admins</a></p>
     {/if}
