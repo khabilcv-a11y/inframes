@@ -4,7 +4,7 @@
   import type { Rect, SlotStyle } from '@inframe/shared';
   import { api } from '$lib/api';
   import { showIst } from '$lib/time';
-  import { dict, detectLang, LANGS, type Key, type Lang } from '$lib/i18n';
+  import { dict, type Key, type Lang } from '$lib/i18n';
   import Turnstile from '$lib/Turnstile.svelte';
   import CampaignCard, { type Card } from '$lib/CampaignCard.svelte';
   import { decodePhoto, ensureFonts, loadImage, render, IDENTITY, type RenderSlot, type Transform } from '$lib/compositor';
@@ -56,7 +56,7 @@
     const r = await api<C>(`/c/${code}${q}`);
     if (!r.ok) { missing = true; return; }
     c = r.data;
-    lang = detectLang(c.language);
+    lang = c.language; // set by the organiser in the campaign details
     tplId = c.templates[0]?.id ?? '';
     try { values = JSON.parse(localStorage.getItem(`inframe_vals_${code}`) ?? '{}'); } catch { values = {}; }
     for (const tp of c.templates) loadImage(tp.assetUrl).then((i) => { frameImgs[tp.id] = i; if (tp.id === tplId) draw(); });
@@ -75,7 +75,6 @@
     draw();
   }
 
-  function setLang(l: Lang) { lang = l; try { localStorage.setItem('inframe_lang', l); } catch { /* ignore */ } }
 
   // ---- drawing ----
   function slotsFor(tp: Tpl): RenderSlot[] { return tp.slots.map((s) => ({ id: s.id, box: s.box, style: s.style })); }
@@ -206,9 +205,6 @@
       {#if c?.logoUrl}<img src={c.logoUrl} alt="" class="av" />{:else if c}<span class="av ph">{c.organisation.slice(0, 1)}</span>{/if}
       <strong>{c?.organisation ?? ''}</strong>
     </a>
-    <select aria-label="Language" value={lang} onchange={(e) => setLang(e.currentTarget.value as Lang)}>
-      {#each LANGS as l}<option value={l.code}>{l.label}</option>{/each}
-    </select>
   </header>
 
   <main>
@@ -327,7 +323,6 @@
 <style>
   .page { min-height: 100vh; display: flex; flex-direction: column; max-width: 520px; margin: 0 auto; }
   .bar { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; gap: 12px; }
-  .bar select { width: auto; margin: 0; min-height: 40px; }
   .org { display: flex; align-items: center; gap: 10px; min-width: 0; text-decoration: none; color: inherit; }
   .av { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; background: #fff; border: 1px solid var(--line); flex: none; }
   .av.ph { display: grid; place-items: center; background: var(--ink); color: #fff; font-weight: 700; border: 0; }
