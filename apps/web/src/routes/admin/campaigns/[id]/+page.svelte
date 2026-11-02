@@ -6,7 +6,7 @@
   import { session } from '$lib/session.svelte';
   import { current, loadCampaign } from '$lib/campaign.svelte';
   import CampaignForm from '$lib/CampaignForm.svelte';
-  import { makePosterPdf } from '$lib/poster';
+  import { makePosterJpg, makePosterPdf } from '$lib/poster';
   import LogoUpload from '$lib/LogoUpload.svelte';
 
   const id = page.params.id!;
@@ -57,16 +57,17 @@
     await loadCampaign(id);
   }
 
-  let posterBusy = $state(false);
-  async function poster() {
-    posterBusy = true;
+  let posterBusy = $state<'' | 'pdf' | 'jpg'>('');
+  async function poster(kind: 'pdf' | 'jpg') {
+    posterBusy = kind;
     try {
-      const blob = await makePosterPdf({ organisation: c.orgName, title: c.title, description: c.description, link, hashtags: c.hashtags, lang: c.language as 'en' | 'ml' | 'hi' });
+      const input = { organisation: c.orgName, title: c.title, description: c.description, link, hashtags: c.hashtags, lang: c.language as 'en' | 'ml' | 'hi' };
+      const blob = await (kind === 'pdf' ? makePosterPdf(input) : makePosterJpg(input));
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob); a.download = `${c.shortCode}-poster.pdf`;
+      a.href = URL.createObjectURL(blob); a.download = `${c.shortCode}-poster.${kind}`;
       document.body.appendChild(a); a.click(); a.remove();
     } catch { alert('Could not make the poster. Try again.'); }
-    posterBusy = false;
+    posterBusy = '';
   }
 
   async function copy() {
@@ -144,7 +145,10 @@
       <button class="sm" onclick={copy}>{copied ? 'Copied ✓' : 'Copy link'}</button>
       {#if qr}<a class="btn ghost sm" href={qr} download={`${c.shortCode}-qr.png`}>Download QR</a>{/if}
     </div>
-    <button class="sm block" onclick={poster} disabled={posterBusy} style="width:100%; margin-bottom:12px">{posterBusy ? 'Making poster…' : 'Download poster (A4 PDF)'}</button>
+    <div class="row" style="margin-bottom:12px">
+      <button class="sm" onclick={() => poster('pdf')} disabled={!!posterBusy}>{posterBusy === 'pdf' ? 'Making…' : 'Poster (PDF)'}</button>
+      <button class="sm" onclick={() => poster('jpg')} disabled={!!posterBusy}>{posterBusy === 'jpg' ? 'Making…' : 'Poster (JPG)'}</button>
+    </div>
     {#if qr}<img src={qr} alt="QR code for the campaign link" width="180" height="180" />{/if}
   </aside>
 </div>

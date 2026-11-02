@@ -18,9 +18,24 @@ function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxW: number): s
   return out;
 }
 
-/** A4 poster, drawn on a canvas so Malayalam and Hindi render properly, then placed in a PDF.
- *  Carries only the organiser's wording: no InFrame name, logo or URL. */
-export async function makePosterPdf(p: PosterInput): Promise<Blob> {
+/** Small InFrame mark and name, centred on `y` (the poster footer). */
+function drawInFrameMark(x: CanvasRenderingContext2D, cx: number, y: number) {
+  const s = 52; // mark size
+  const w = 330; // mark + name width
+  const left = cx - w / 2;
+  x.strokeStyle = '#E8553D'; x.lineWidth = 8; x.lineCap = 'round'; x.lineJoin = 'round';
+  const a = 18;
+  for (const [px, py, sx, sy] of [[left, y - s / 2, 1, 1], [left + s, y - s / 2, -1, 1], [left, y + s / 2, 1, -1], [left + s, y + s / 2, -1, -1]] as const) {
+    x.beginPath(); x.moveTo(px, py + sy * a); x.lineTo(px, py); x.lineTo(px + sx * a, py); x.stroke();
+  }
+  x.fillStyle = '#E8553D'; x.beginPath(); x.arc(left + s / 2, y, 7, 0, Math.PI * 2); x.fill();
+  x.fillStyle = '#16161A'; x.font = '700 62px "Space Grotesk", sans-serif'; x.textAlign = 'left'; x.textBaseline = 'middle';
+  x.fillText('InFrame', left + s + 22, y + 3);
+  x.textAlign = 'center'; x.textBaseline = 'alphabetic';
+}
+
+/** A4 poster at 300 dpi, drawn on a canvas so Malayalam and Hindi render properly. Footer carries a small InFrame mark. */
+async function posterCanvas(p: PosterInput): Promise<HTMLCanvasElement> {
   const W = 2480, H = 3508; // A4 at 300 dpi
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const x = c.getContext('2d')!;
@@ -62,7 +77,21 @@ export async function makePosterPdf(p: PosterInput): Promise<Blob> {
   x.fillStyle = '#16161A'; x.font = '500 78px "Inter", "Noto Sans Malayalam", "Mukta", sans-serif';
   let sy = qy + qrSize + 460;
   for (const s of L.steps) { x.fillText(s, W / 2, sy); sy += 100; }
-  if (p.hashtags) { x.fillStyle = '#E8553D'; x.font = '700 84px "Space Grotesk", sans-serif'; x.fillText(p.hashtags, W / 2, Math.min(H - 90, sy + 70), W - 240); }
+  if (p.hashtags) { x.fillStyle = '#E8553D'; x.font = '700 84px "Space Grotesk", sans-serif'; x.fillText(p.hashtags, W / 2, Math.min(H - 190, sy + 70), W - 240); }
+
+  // footer: thin rule and the small InFrame mark
+  x.strokeStyle = '#E6E6E0'; x.lineWidth = 3; x.beginPath(); x.moveTo(300, H - 130); x.lineTo(W - 300, H - 130); x.stroke();
+  drawInFrameMark(x, W / 2, H - 70);
+  return c;
+}
+
+export async function makePosterJpg(p: PosterInput): Promise<Blob> {
+  const c = await posterCanvas(p);
+  return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('encode'))), 'image/jpeg', 0.92));
+}
+
+export async function makePosterPdf(p: PosterInput): Promise<Blob> {
+  const c = await posterCanvas(p);
 
   const { jsPDF } = await import('jspdf');
   const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });

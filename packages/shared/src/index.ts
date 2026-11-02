@@ -57,6 +57,9 @@ export const createAdminSchema = z.object({
 
 export const updateAdminSchema = z.object({
   action: z.enum(['suspend', 'reactivate', 'reset_password']).optional(),
+  name: z.string().trim().min(2).max(120).optional(),
+  email: z.string().trim().toLowerCase().email().max(254).optional(),
+  mobile: z.string().trim().max(20).nullable().optional(),
   role: z.enum(['manager', 'viewer']).optional(),
   orgId: z.string().min(1).optional()
 });

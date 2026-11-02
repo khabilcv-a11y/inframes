@@ -6,8 +6,12 @@
   import LogoUpload from '$lib/LogoUpload.svelte';
 
   type Org = { id: string; name: string; status: string; admins: number; campaigns: number; logoUrl: string | null };
+  const slug = (n: string) => n.toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '');
   let orgs = $state<Org[]>([]);
   let name = $state('');
+  let editing = $state<string | null>(null);
+  let editName = $state('');
+  let editErr = $state('');
   let error = $state('');
 
   async function load() {
@@ -20,9 +24,20 @@
   async function create(e: SubmitEvent) {
     e.preventDefault();
     error = '';
-    const r = await api('/super/organisations', { method: 'POST', body: JSON.stringify({ name }) });
-    if (!r.ok) { error = 'Enter a name of at least 2 characters.'; return; }
+    const r = await api<{ error?: string }>('/super/organisations', { method: 'POST', body: JSON.stringify({ name }) });
+    if (!r.ok) { error = r.data.error === 'name_taken' ? 'An organisation with this name already exists.' : 'Enter a name of at least 2 characters.'; return; }
     name = '';
+    await load();
+  }
+
+  function startEdit(o: Org) { editing = o.id; editName = o.name; editErr = ''; }
+  async function saveEdit(o: Org) {
+    editErr = '';
+    if (editName.trim() === o.name) { editing = null; return; }
+    if (!confirm(`Rename “${o.name}” to “${editName.trim()}”?\n\nIts public page address changes, and new pictures saved to Google Drive go into a folder with the new name.`)) return;
+    const r = await api<{ error?: string }>(`/super/organisations/${o.id}`, { method: 'PATCH', body: JSON.stringify({ name: editName }) });
+    if (!r.ok) { editErr = r.data.error === 'name_taken' ? 'Another organisation already has this name.' : 'Enter a name of at least 2 characters.'; return; }
+    editing = null;
     await load();
   }
 
@@ -48,10 +63,21 @@
       <tbody>
         {#each orgs as o (o.id)}
           <tr>
-            <td><strong>{o.name}</strong></td>
+            <td>
+              {#if editing === o.id}
+                <form class="edit" onsubmit={(e) => { e.preventDefault(); saveEdit(o); }}>
+                  <input required minlength="2" bind:value={editName} aria-label="Organisation name" />
+                  <button class="btn sm">Save</button>
+                  <button type="button" class="sm" onclick={() => (editing = null)}>Cancel</button>
+                </form>
+                {#if editErr}<small class="error">{editErr}</small>{/if}
+              {:else}
+                <strong>{o.name}</strong><br /><small><a href={`/o/${slug(o.name)}`} target="_blank" rel="noopener">Public page ↗</a></small>
+              {/if}
+            </td>
             <td><LogoUpload endpoint={`/api/admin/organisations/${o.id}/logo`} bind:url={o.logoUrl} label="" /></td><td>{o.admins}</td><td>{o.campaigns}</td>
             <td><span class="badge {o.status}">{o.status}</span></td>
-            <td style="text-align:right"><button class="sm" onclick={() => toggle(o)}>{o.status === 'active' ? 'Deactivate' : 'Activate'}</button></td>
+            <td class="acts"><button class="sm" onclick={() => startEdit(o)}>Edit</button> <button class="sm" onclick={() => toggle(o)}>{o.status === 'active' ? 'Deactivate' : 'Activate'}</button></td>
           </tr>
         {:else}<tr><td colspan="6" class="empty">No organisations yet.</td></tr>{/each}
       </tbody>
@@ -60,5 +86,8 @@
 </div>
 
 <style>
+  .edit { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .edit input { margin: 0; min-height: 36px; width: 220px; }
+  .acts { text-align: right; white-space: nowrap; }
   .add { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
 </style>

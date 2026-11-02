@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from '../middleware/auth.ts';
 import { audit } from '../lib/audit.ts';
 import { hashPassword } from '../lib/crypto.ts';
 import { tempPassword, ulid } from '../lib/ids.ts';
+import { slugify } from '../lib/slug.ts';
 
 export const superRoutes = new Hono<AppEnv>();
 superRoutes.use('*', requireAuth(), requireRole('super_admin'));
@@ -12,6 +13,12 @@ superRoutes.use('*', requireAuth(), requireRole('super_admin'));
 const body = (c: { req: { json: () => Promise<unknown> } }) => c.req.json().catch(() => null);
 
 // ---- Organisations ----
+/** Organisation pages live at /o/<name-as-slug>, so two organisations may not share the same slug. */
+async function slugTaken(db: D1Database, name: string, exceptId?: string): Promise<boolean> {
+  const { results } = await db.prepare('SELECT id, name FROM organisations').all<{ id: string; name: string }>();
+  return results.some((o) => o.id !== exceptId && slugify(o.name) === slugify(name));
+}
+
 superRoutes.get('/organisations', async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT o.id, o.name, CASE WHEN o.logo_image_id IS NOT NULL THEN '/api/images/' || o.logo_image_id ELSE o.logo_url END AS logoUrl, o.status, o.created_at AS createdAt,
@@ -25,6 +32,7 @@ superRoutes.get('/organisations', async (c) => {
 superRoutes.post('/organisations', async (c) => {
   const p = createOrgSchema.safeParse(await body(c));
   if (!p.success) return c.json({ error: 'invalid_input', issues: p.error.issues }, 400);
+  if (await slugTaken(c.env.DB, p.data.name)) return c.json({ error: 'name_taken' }, 409);
   const id = ulid();
   await c.env.DB.prepare('INSERT INTO organisations (id, name, logo_url, created_at) VALUES (?, ?, ?, ?)')
     .bind(id, p.data.name, p.data.logoUrl ?? null, new Date().toISOString())
@@ -40,12 +48,14 @@ superRoutes.patch('/organisations/:id', async (c) => {
   const found = await c.env.DB.prepare('SELECT id FROM organisations WHERE id = ?').bind(id).first();
   if (!found) return c.json({ error: 'not_found' }, 404);
   const d = p.data;
+  if (d.name && (await slugTaken(c.env.DB, d.name, id))) return c.json({ error: 'name_taken' }, 409);
   await c.env.DB.prepare(
     'UPDATE organisations SET name = COALESCE(?, name), logo_url = CASE WHEN ? THEN ? ELSE logo_url END, status = COALESCE(?, status) WHERE id = ?'
   )
     .bind(d.name ?? null, d.logoUrl === undefined ? 0 : 1, d.logoUrl ?? null, d.status ?? null, id)
     .run();
   await audit(c, 'org.update', { type: 'organisation', id }, d);
+  c.header('cache-control', 'no-store');
   return c.json({ ok: true });
 });
 
@@ -89,10 +99,19 @@ superRoutes.patch('/admins/:id', async (c) => {
   const id = c.req.param('id');
   const target = await c.env.DB.prepare("SELECT id, status FROM users WHERE id = ? AND role != 'super_admin'").bind(id).first<{ status: string }>();
   if (!target) return c.json({ error: 'not_found' }, 404);
-  const { action, role, orgId } = p.data;
+  const { action, role, orgId, name, email, mobile } = p.data;
 
   if (orgId && !(await c.env.DB.prepare("SELECT id FROM organisations WHERE id = ? AND status = 'active'").bind(orgId).first())) {
     return c.json({ error: 'org_not_found' }, 404);
+  }
+  if (email && (await c.env.DB.prepare('SELECT id FROM users WHERE email = ? AND id != ?').bind(email, id).first())) {
+    return c.json({ error: 'email_taken' }, 409);
+  }
+  if (name !== undefined || email !== undefined || mobile !== undefined) {
+    await c.env.DB.prepare('UPDATE users SET name = COALESCE(?, name), email = COALESCE(?, email), mobile = CASE WHEN ? THEN ? ELSE mobile END WHERE id = ?')
+      .bind(name ?? null, email ?? null, mobile === undefined ? 0 : 1, mobile ?? null, id)
+      .run();
+    await audit(c, 'admin.edit', { type: 'user', id }, { name, email, mobile });
   }
   if (role || orgId) {
     await c.env.DB.prepare('UPDATE users SET role = COALESCE(?, role), org_id = COALESCE(?, org_id) WHERE id = ?')
