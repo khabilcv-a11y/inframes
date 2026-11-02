@@ -20,15 +20,16 @@ admin.get('/status', async (c) => {
 admin.get('/script', async (c) => c.json({ script: await scriptSource(c.env, new URL(c.req.url).origin) }));
 
 admin.post('/connect', async (c) => {
-  const p = z.object({ url: z.string().trim().max(300) }).safeParse(await c.req.json().catch(() => null));
+  const p = z.object({ url: z.string().trim().max(300), skipTest: z.boolean().optional() }).safeParse(await c.req.json().catch(() => null));
   if (!p.success || !isScriptUrl(p.data.url)) return c.json({ error: 'bad_url' }, 400);
-  const ping = await pingScript(c.env, p.data.url);
-  if (!ping.ok) return c.json({ error: 'not_reachable' }, 409);
+  // `skipTest`: the test call runs from our server; real saving does not need it (browsers talk to the script directly)
+  const ping = p.data.skipTest ? { ok: true as const, email: undefined, reason: undefined } : await pingScript(c.env, p.data.url);
+  if (!ping.ok) return c.json({ error: 'not_reachable', reason: ping.reason }, 409);
   await c.env.DB.prepare(
     `INSERT INTO drive_script (id, url, email, connected_at) VALUES (1, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET url = excluded.url, email = excluded.email, connected_at = excluded.connected_at`
   ).bind(p.data.url, ping.email ?? null, new Date().toISOString()).run();
-  await audit(c, 'drive.connect', undefined, { email: ping.email });
+  await audit(c, 'drive.connect', undefined, { email: ping.email, tested: !p.data.skipTest });
   return c.json({ ok: true, email: ping.email ?? null });
 });
 

@@ -71,6 +71,21 @@ test('connect: super admin only, link checked, script proves it knows the secret
   assert.equal((await connect()).status, 409); // script has the wrong secret (pasted from another site)
   restore();
 
+  // what the page tells the admin when Google answers with something other than the script's JSON
+  const real = globalThis.fetch;
+  const reply = (body: string, status = 200) => { globalThis.fetch = (async () => new Response(body, { status })) as typeof fetch; };
+  const reason = async () => ((await (await connect()).json()) as any).reason;
+  reply('<html><a href="https://accounts.google.com/ServiceLogin?x">Sign in</a></html>'); assert.equal(await reason(), 'access');
+  reply('<html>Authorization required</html>'); assert.equal(await reason(), 'authorize');
+  reply('<html>Script function not found: doGet</html>'); assert.equal(await reason(), 'code');
+  globalThis.fetch = (async () => { throw new Error('offline'); }) as typeof fetch; assert.equal(await reason(), 'network');
+  globalThis.fetch = real;
+  // a failed test can be skipped: browsers reach the script themselves, only this check comes from our server
+  reply('<html>nope</html>');
+  assert.equal((await req('/super/drive/connect', { method: 'POST', body: j({ url: SCRIPT_URL, skipTest: true }) }, cookie)).status, 200);
+  await req('/super/drive/disconnect', { method: 'POST' }, cookie);
+  globalThis.fetch = real;
+
   restore = fakeScript({ secret: SESSION_SECRET });
   const ok = await connect();
   assert.equal(ok.status, 200);

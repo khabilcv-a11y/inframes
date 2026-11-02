@@ -27,15 +27,28 @@ export async function scriptUrl(e: Env): Promise<string | null> {
 
 export const isScriptUrl = (u: string) => /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(u);
 
-/** Asks the script who it is (proves the link works and the secret matches). */
-export async function pingScript(e: Env, url: string): Promise<{ ok: boolean; email?: string }> {
+export type PingReason = 'network' | 'access' | 'authorize' | 'code' | 'secret' | 'other';
+
+/** Asks the script who it is. When it fails, says why, so the admin page can point at the exact step. */
+export async function pingScript(e: Env, url: string): Promise<{ ok: boolean; email?: string; reason?: PingReason }> {
   const t = String(Date.now());
+  let status = 0, text = '';
   try {
     const res = await fetch(`${url}?${new URLSearchParams({ action: 'ping', t, sig: await sign(e, `ping:${t}`) })}`, { redirect: 'follow' });
-    const j = (await res.json()) as { ok?: boolean; email?: string };
-    return { ok: j.ok === true, email: j.email };
+    status = res.status;
+    text = await res.text();
   } catch {
-    return { ok: false };
+    return { ok: false, reason: 'network' };
+  }
+  try {
+    const j = JSON.parse(text) as { ok?: boolean; email?: string };
+    return j.ok === true ? { ok: true, email: j.email } : { ok: false, reason: 'secret' }; // script ran but does not share our secret
+  } catch {
+    // Google answered with a web page instead of the script's JSON
+    if (/accounts\.google\.com|ServiceLogin|Sign in/i.test(text)) return { ok: false, reason: 'access' }; // not set to "Anyone"
+    if (/Authorization required|authorize|needs permission/i.test(text)) return { ok: false, reason: 'authorize' };
+    if (/function not found|doGet|Script function/i.test(text)) return { ok: false, reason: 'code' };
+    return { ok: false, reason: status >= 400 ? 'other' : 'access' };
   }
 }
 
