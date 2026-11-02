@@ -84,7 +84,7 @@
         <textarea readonly rows="6" value={script} onfocus={(e) => e.currentTarget.select()}></textarea>
       </li>
       <li>Click <b>Deploy → New deployment</b>. Click the gear next to “Select type” and choose <b>Web app</b>. Set <b>Execute as: Me</b> and <b>Who has access: Anyone</b>, then click <b>Deploy</b>.</li>
-      <li>Click <b>Authorize access</b> and choose your account. If Google says it hasn’t verified the app, click <b>Advanced → Go to … (unsafe) → Allow</b>. This warning appears for every personal script; it is your own script.</li>
+      <li>Allow the script to use your Drive: in the editor toolbar choose <b>authorize</b> in the function list and click <b>Run</b>. Choose your account. If Google says it hasn’t verified the app, click <b>Advanced → Go to … (unsafe) → Allow</b>. This warning appears for every personal script; it is your own script.</li>
       <li>Copy the <b>Web app URL</b> and paste it here:
         <form onsubmit={(e) => connect(e)} class="row" style="margin-top:8px; align-items:flex-start">
           <input style="flex:1; min-width:240px; margin:0" required placeholder="https://script.google.com/macros/s/…/exec" bind:value={url} />

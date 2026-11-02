@@ -80,8 +80,14 @@ function json_(o) {
   return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
 }
 
+// Run this once from the editor (choose "authorize" in the toolbar, click Run) to give the script access to your Drive.
+function authorize() {
+  DriveApp.getRootFolder();
+  Logger.log('Authorised for ' + Session.getEffectiveUser().getEmail());
+}
+
 function doGet(e) {
-  var p = e.parameter || {};
+  var p = (e && e.parameter) || {};
   if (p.action === 'ping' && p.sig === hmac_('ping:' + p.t)) {
     return json_({ ok: true, email: Session.getEffectiveUser().getEmail() });
   }
@@ -89,6 +95,7 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  if (!e || !e.postData) return json_({ ok: false, error: 'no data' });
   try {
     var body = JSON.parse(e.postData.contents);
     if (body.sig !== hmac_(body.msg)) return json_({ ok: false, error: 'bad signature' });

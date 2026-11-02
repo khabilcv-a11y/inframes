@@ -186,10 +186,16 @@ test('the real script text runs: accepts our signed ticket, files the picture in
       DriveApp: { getRootFolder: () => root },
       UrlFetchApp: { fetch: (url: string, o: any) => { fetched.push({ url, ...o }); } },
       Session: { getEffectiveUser: () => ({ getEmail: () => 'owner@gmail.com' }) },
+      Logger: { log() {} },
       Date, JSON, String
     };
     vm.createContext(ctx);
     vm.runInContext(src, ctx);
+
+    // running the functions by hand from the editor (no web request attached) must not throw
+    assert.equal(JSON.parse(ctx.doGet().content).ok, false);
+    assert.equal(JSON.parse(ctx.doPost().content).ok, false);
+    assert.equal(typeof ctx.authorize, 'function');
 
     // ping with our signature
     const t = '12345';
