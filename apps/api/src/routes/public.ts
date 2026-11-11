@@ -61,7 +61,7 @@ publicRoutes.get('/c/:code', async (c) => {
     title: r.title, description: r.description, language: r.language, organisation: r.org_name, orgSlug: slugify(r.org_name ?? ''), logoUrl: logoOf(r),
     state: preview ? 'live' : effectiveState(r), preview, startsAt: r.starts_at, endsAt: r.ends_at, caption: r.caption,
     hashtags: r.hashtags, thankYou: r.thank_you, ctaUrl: r.cta_url, outputs: n?.n ?? 0,
-    saveMode: await effectiveSaveMode(c.env, r), templates: await loadTemplates(c.env.DB, r.id), more: await moreFrom(c.env.DB, r)
+    saveMode: await effectiveSaveMode(c.env, r), eventPhotos: await photoCount(c.env.DB, r.id), templates: await loadTemplates(c.env.DB, r.id), more: await moreFrom(c.env.DB, r)
   });
 });
 
@@ -70,6 +70,14 @@ async function effectiveSaveMode(env: AppEnv['Bindings'], r: Row): Promise<strin
   const mode = r.save_mode ?? 'off';
   if (mode === 'off') return 'off';
   return (await scriptUrl(env)) ? mode : 'off';
+}
+
+async function photoCount(db: D1Database, campaignId: string): Promise<number> {
+  try {
+    return (await db.prepare('SELECT COUNT(*) AS n FROM event_photos WHERE campaign_id = ?').bind(campaignId).first<{ n: number }>())?.n ?? 0;
+  } catch {
+    return 0;
+  }
 }
 
 async function moreFrom(db: D1Database, r: Row): Promise<Card[]> {

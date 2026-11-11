@@ -13,7 +13,7 @@
   type Slot = { id: string; label: string; inputType: 'text' | 'dropdown' | 'fixed'; options: string[]; fixedValue: string | null; required: boolean; box: Rect; style: SlotStyle; maxChars: number };
   type Tpl = { id: string; name: string; width: number; height: number; assetUrl: string; photoWindows: Rect[]; slots: Slot[] };
   type Pic = { bitmap: ImageBitmap; w: number; h: number; tf: Transform; file: File };
-  type C = { title: string; description: string | null; language: Lang; organisation: string; orgSlug: string; logoUrl: string | null; more: Card[]; state: string; preview: boolean; startsAt: string; caption: string | null; hashtags: string | null; thankYou: string | null; ctaUrl: string | null; outputs: number; saveMode: string; templates: Tpl[] };
+  type C = { title: string; description: string | null; language: Lang; organisation: string; orgSlug: string; logoUrl: string | null; more: Card[]; state: string; preview: boolean; startsAt: string; caption: string | null; hashtags: string | null; thankYou: string | null; ctaUrl: string | null; outputs: number; saveMode: string; eventPhotos?: number; templates: Tpl[] };
 
   const code = page.params.code!;
   const preview = page.url.searchParams.get('preview') === '1';
@@ -348,6 +348,9 @@
           {#if nWin > 1}<p class="privacy" style="margin-top:8px">{t('collageHint')} {nWin}</p>{/if}
           <p class="privacy">{savesRaw ? t('consentRaw') : savesFramed ? t('noticeFramed') : t('privacy')}</p>
 
+          {#if c.eventPhotos}
+            <a class="btn dark block" style="margin-top:16px" href={`/c/${code}/photos`}>📸 Find my photos from this event</a>
+          {/if}
           {#if c.description}
             <section class="about"><h2>{t('about')}</h2><p>{c.description}</p></section>
           {/if}

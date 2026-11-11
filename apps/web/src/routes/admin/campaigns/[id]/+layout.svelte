@@ -13,6 +13,7 @@
   const tabs = $derived([
     { href: `/admin/campaigns/${id}`, label: 'Overview' },
     { href: `/admin/campaigns/${id}/frames`, label: 'Frames & titles' },
+    { href: `/admin/campaigns/${id}/photos`, label: 'Event photos' },
     { href: `/admin/campaigns/${id}/results`, label: 'Results' }
   ]);
 </script>

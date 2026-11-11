@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
-    "build": "vite build",
+    "dev": "node scripts/copy-ort.mjs && vite dev",
+    "build": "node scripts/copy-ort.mjs && vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "test": "echo \"no web tests yet\""
+    "test": "echo \"no web tests yet\"",
+    "prepare:ort": "node scripts/copy-ort.mjs"
   },
   "dependencies": {
     "@inframe/shared": "workspace:*",
@@ -17,7 +18,8 @@
     "jose": "^5.9.0",
     "zod": "^3.24.0",
     "qrcode": "^1.5.4",
-    "jspdf": "^2.5.2"
+    "jspdf": "^2.5.2",
+    "onnxruntime-web": "1.20.1"
   },
   "devDependencies": {
     "@sveltejs/adapter-cloudflare": "^7.0.0",

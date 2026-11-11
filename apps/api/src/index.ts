@@ -9,6 +9,7 @@ import { insights } from './routes/insights.ts';
 import { images } from './routes/images.ts';
 import { drive } from './routes/drive.ts';
 import { uploads } from './routes/uploads.ts';
+import { photos } from './routes/photos.ts';
 
 export const app = new Hono<AppEnv>().basePath('/api');
 
@@ -20,6 +21,7 @@ app.route('/', templates);
 app.route('/', images);
 app.route('/', drive);
 app.route('/', uploads);
+app.route('/', photos);
 app.route('/', publicRoutes);
 app.route('/', insights);
 
