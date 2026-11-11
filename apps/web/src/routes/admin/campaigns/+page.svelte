@@ -32,7 +32,7 @@
       <tbody>
         {#each shown as c (c.id)}
           <tr>
-            <td><a href={`/admin/campaigns/${c.id}`}><strong>{c.title}</strong></a><br /><small>/c/{c.shortCode}</small></td>
+            <td><a href={`/admin/campaigns/${c.id}`}><strong>{c.title}</strong></a><br /><small>/c/{c.shortCode} · <a href={`/admin/campaigns/${c.id}/photos`}>Event photos</a></small></td>
             <td>{c.orgName}</td>
             <td><span class="badge {c.state}">{c.state}</span></td>
             <td><small>{showIst(c.startsAt)} → {showIst(c.endsAt)}</small></td>

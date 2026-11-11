@@ -31,6 +31,7 @@
     [
       { href: '/admin', label: 'Dashboard', icon: '▦' },
       { href: '/admin/campaigns', label: 'Campaigns', icon: '◉' },
+      { href: '/admin/photos', label: 'Event photos', icon: '▣' },
       ...(session.user?.role === 'super_admin'
         ? [
             { href: '/admin/organisations', label: 'Organisations', icon: '⌂' },
